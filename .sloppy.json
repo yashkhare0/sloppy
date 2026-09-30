@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "project": {
+    "typescript": false,
+    "javascript": true,
+    "python": true,
+    "react": false,
+    "next": false,
+    "shadcn": false
+  },
+  "include": [
+    "**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,py}"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/.next/**",
+    "**/.output/**",
+    "**/.nuxt/**",
+    "**/convex/_generated/**",
+    "**/.venv*/**",
+    "**/.claude/worktrees/**",
+    "**/.codex/worktrees/**",
+    "**/.tmp-tests-fs/**",
+    "**/venv/**",
+    "**/__pycache__/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/*.d.ts",
+    "**/*.generated.*"
+  ],
+  "limits": {
+    "file": [
+      300,
+      500
+    ],
+    "function": [
+      40,
+      80
+    ],
+    "component": [
+      100,
+      180
+    ],
+    "class": [
+      200,
+      350
+    ],
+    "complexity": [
+      8,
+      12
+    ],
+    "nesting": [
+      3,
+      4
+    ],
+    "parameters": [
+      4,
+      6
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.test.*",
+        "**/*.spec.*",
+        "**/test_*.py",
+        "**/tests/**",
+        "**/test/**"
+      ],
+      "reason": "Tests often contain repetitive arrangements and assertions.",
+      "limits": {
+        "file": [
+          500,
+          800
+        ],
+        "function": [
+          80,
+          160
+        ]
+      }
+    }
+  ],
+  "naming": {
+    "files": true,
+    "identifiers": true
+  },
+  "boundaries": [
+    {
+      "from": [
+        "src/shared/**",
+        "src/lib/**"
+      ],
+      "disallow": [
+        "src/features/**",
+        "src/app/**"
+      ],
+      "reason": "Shared modules must not depend on application features."
+    }
+  ],
+  "checks": {
+    "javascriptLint": true,
+    "typescriptLint": false,
+    "typescriptTypes": false,
+    "pythonLint": true,
+    "pythonTypes": true
+  },
+  "typescript": {
+    "projects": [
+      "tsconfig.json"
+    ],
+    "requiredOptions": [
+      "strict",
+      "noUncheckedIndexedAccess",
+      "exactOptionalPropertyTypes"
+    ],
+    "eslintRules": {}
+  },
+  "python": {
+    "executable": "python",
+    "ruffExecutable": "ruff",
+    "ruffSelect": [
+      "E4",
+      "E7",
+      "E9",
+      "F",
+      "B",
+      "I",
+      "N",
+      "ASYNC",
+      "ANN",
+      "BLE",
+      "PGH",
+      "RUF"
+    ],
+    "typeCheckingMode": "strict"
+  },
+  "baseline": null,
+  "deadCode": {
+    "entryPoints": [],
+    "protected": []
+  }
+}

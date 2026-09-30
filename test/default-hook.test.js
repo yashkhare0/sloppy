@@ -45,8 +45,8 @@ test('default hook isolates worktrees, respects local hooks and supports enforce
   const firstReport = JSON.parse(fs.readFileSync(path.join(root, '.git/sloppy/report.json')));
   const location = run('git', ['rev-parse', '--path-format=absolute', '--git-path', 'sloppy'], second).stdout.trim();
   const secondReport = JSON.parse(fs.readFileSync(path.join(location, 'report.json')));
-  assert.equal(firstReport.root, root);
-  assert.equal(secondReport.root, second);
+  assert.equal(fs.realpathSync(firstReport.root), fs.realpathSync(root));
+  assert.equal(fs.realpathSync(secondReport.root), fs.realpathSync(second));
   assert.equal(firstReport.summary.errors, 0);
   assert.equal(secondReport.summary.errors, 1);
   run('git', ['config', 'sloppy.mode', 'enforce'], root);

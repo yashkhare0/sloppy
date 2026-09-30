@@ -7,15 +7,22 @@ import { codeHealth, unreachableModules } from './code-health.js';
 
 const functionNode = node => ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node) || ts.isConstructorDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node);
 const controls = node => ts.isIfStatement(node) || ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node) || ts.isWhileStatement(node) || ts.isDoStatement(node) || ts.isSwitchStatement(node) || ts.isTryStatement(node);
+const decisionKinds = new Set(['IfStatement', 'ConditionalExpression', 'CaseClause', 'CatchClause', 'ForStatement', 'ForOfStatement', 'ForInStatement', 'WhileStatement', 'DoStatement'].map(kind => ts.SyntaxKind[kind]));
 function erasedImport(node) {
   if (ts.isImportDeclaration(node)) {
     const clause = node.importClause;
     if (!clause) return false;
     if (clause.isTypeOnly) return true;
-    return !clause.name && clause.namedBindings && ts.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every(e => e.isTypeOnly);
+    if (clause.name) return false;
+    return allTypeBindings(clause.namedBindings);
   }
-  if (ts.isExportDeclaration(node)) return node.isTypeOnly || (node.exportClause && ts.isNamedExports(node.exportClause) && node.exportClause.elements.length > 0 && node.exportClause.elements.every(e => e.isTypeOnly));
+  if (ts.isExportDeclaration(node)) return node.isTypeOnly || allTypeBindings(node.exportClause);
   return false;
+}
+function allTypeBindings(bindings) {
+  if (!bindings) return false;
+  if (!ts.isNamedImports(bindings) && !ts.isNamedExports(bindings)) return false;
+  return bindings.elements.length > 0 && bindings.elements.every(e => e.isTypeOnly);
 }
 function isClient(source) {
   for (const statement of source.statements) {
@@ -44,7 +51,7 @@ function complexity(node) {
   let count = 1, nesting = 0;
   function walk(child, depth) {
     if (child !== node && functionNode(child)) return;
-    if (ts.isIfStatement(child) || ts.isConditionalExpression(child) || ts.isCaseClause(child) || ts.isCatchClause(child) || ts.isForStatement(child) || ts.isForOfStatement(child) || ts.isForInStatement(child) || ts.isWhileStatement(child) || ts.isDoStatement(child)) count++;
+    if (decisionKinds.has(child.kind)) count++;
     if (ts.isBinaryExpression(child) && [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(child.operatorToken.kind)) count++;
     const next = depth + (controls(child) ? 1 : 0);
     nesting = Math.max(nesting, next);
@@ -62,14 +69,111 @@ export function analyzeTypescript(root, files, config, dependencyGraph) {
     const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(absolute), undefined, absolute);
     return { directory: path.dirname(absolute), options: parsed.options, files: new Set(parsed.fileNames.map(f => path.resolve(f).toLowerCase())) };
   }).filter(Boolean).sort((a, b) => b.directory.length - a.directory.length);
-  for (const file of files) {
+  const shared = { root, config, projects, clients, servers, graph, runtimeGraph, dependencyGraph, findings };
+  for (const file of files) analyzeFile(file, shared);
+  findings.push(...cycles(graph));
+  findings.push(...unreachableModules(graph, config));
+  for (const client of clients) {
+    const visited = new Set();
+    const pending = [[client]];
+    while (pending.length) {
+      const chain = pending.pop(), file = chain.at(-1);
+      if (visited.has(file)) continue;
+      visited.add(file);
+      if (servers.has(file)) findings.push(finding('next/client-server-boundary', { file: client, line: 1, column: 1, message: 'Client module reaches a server-only dependency', guidance: 'Move the server operation behind a server-owned boundary and pass serializable data into the client component.', ...{ evidence: { chain } } }));
+      for (const target of runtimeGraph.get(file) ?? []) if (runtimeGraph.has(target)) pending.push([...chain, target]);
+    }
+  }
+
+  return findings;
+}
+export function cycles(graph) {
+  const state = new Map(), stack = [], findings = [], emitted = new Set();
+  function visit(file) {
+    if (state.get(file) === 2) return;
+    if (state.get(file) === 1) {
+      const cycle = [...stack.slice(stack.indexOf(file)), file];
+      const key = [...new Set(cycle)].sort().join('|');
+      if (!emitted.has(key)) findings.push(finding('architecture/circular-import', { file: file, line: 1, column: 1, message: 'Circular local import dependency', guidance: 'Remove the cycle by placing shared contracts in a module both sides can depend on, or correcting dependency direction.', ...{ evidence: { cycle } } }));
+      emitted.add(key); return;
+    }
+    state.set(file, 1); stack.push(file);
+    for (const target of graph.get(file) ?? []) if (graph.has(target)) visit(target);
+    stack.pop(); state.set(file, 2);
+  }
+  for (const file of [...graph.keys()].sort()) visit(file);
+  return findings;
+}
+
+function inspectJsx(node, context) {
+  const { config, source, file, findings } = context;
+
+      if (config.project.react && (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))) {
+        const tag = node.tagName.getText();
+        const attributes = node.attributes.properties;
+        const spread = attributes.some(a => ts.isJsxSpreadAttribute(a));
+        const has = name => attributes.some(a => ts.isJsxAttribute(a) && a.name.getText() === name);
+        const pos = source.getLineAndCharacterOfPosition(node.getStart(source));
+        if (tag === 'img' && !has('alt') && !spread) findings.push(finding('accessibility/image-alt', { file: file, line: pos.line + 1, column: pos.character + 1, message: 'Image has no alt attribute', guidance: 'Provide meaningful alt text, or alt="" for a decorative image.' }));
+        if (tag === 'button' && !has('type') && !spread) findings.push(finding('react/button-type', { file: file, line: pos.line + 1, column: pos.character + 1, message: 'Button has no explicit type', guidance: 'Use type="button" unless this button intentionally submits or resets a form.' }));
+      }
+    }
+
+function collectImports(node, context) {
+  const { imports } = context;
+
+      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) imports.push({ specifier: node.moduleSpecifier.text, node, erased: erasedImport(node) });
+      if (ts.isCallExpression(node) && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0]) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) imports.push({ specifier: node.arguments[0].text, node });
+    }
+
+function visit(node, context) {
+  const { config, addMetric, span } = context;
+
+      inspectJsx(node, context);
+      if (functionNode(node) && node.body) {
+        const symbol = symbolOf(node);
+        const component = config.project.react && /^[A-Z]/.test(symbol) && !ts.isMethodDeclaration(node);
+        addMetric(component ? 'component' : 'function', span(node), node, symbol);
+        const values = { ...complexity(node), parameters: node.parameters.length };
+        for (const [kind, value] of Object.entries(values)) addMetric(kind, value, node, symbol);
+      }
+      if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) addMetric('class', span(node), node, symbolOf(node));
+      collectImports(node, context);
+      ts.forEachChild(node, child => visit(child, context));
+    }
+
+function resolveImports(context) {
+  const { root, file, config, source, options, imports, servers, dependencyGraph } = context;
+
+    const edges = [], runtimeEdges = [];
+    for (const { specifier, node, erased } of imports) {
+      if (!erased && config.project.next && serverSpecifier(specifier)) servers.add(file);
+      const resolved = ts.resolveModuleName(specifier, path.join(root, file), options, ts.sys).resolvedModule;
+      if (!resolved) {
+        if (dependencyGraph) dependencyGraph.unresolved.push({ file, specifier, line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1 });
+        continue;
+      }
+      const target = path.relative(root, resolved.resolvedFileName).replaceAll('\\', '/');
+      if (target.startsWith('../') || target.includes('node_modules/')) continue;
+      edges.push(target);
+      if (!erased) runtimeEdges.push(target);
+      const pos = source.getLineAndCharacterOfPosition(node.getStart(source));
+      if (dependencyGraph) dependencyGraph.edges.push({ source: file, target, relation: 'imports', proof: 'compiler-resolved', typeOnly: Boolean(erased), evidence: { file, line: pos.line + 1, column: pos.character + 1, specifier } });
+      checkImportBoundaries(context, { target, specifier, pos });
+    }
+      return { edges, runtimeEdges };
+    }
+
+function analyzeFile(file, shared) {
+  const { root, config, projects, clients, servers, graph, runtimeGraph, dependencyGraph, findings } = shared;
+
     const absoluteFile = path.resolve(root, file);
     const project = projects.find(p => p.files.has(absoluteFile.toLowerCase())) ?? projects.find(p => absoluteFile.startsWith(p.directory + path.sep));
     const options = project?.options ?? { moduleResolution: ts.ModuleResolutionKind.Bundler, module: ts.ModuleKind.ESNext };
     const text = fs.readFileSync(path.join(root, file), 'utf8');
     const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
     if (config.project.next && isClient(source)) clients.add(file);
-    if (config.project.next && /\.server\.(?:ts|tsx|mts|cts)$/.test(file)) servers.add(file);
+    if (config.project.next && /\.server\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(file)) servers.add(file);
     const lines = codeLines(text, source), limits = fileLimits(file, config);
     const addMetric = (kind, value, node, symbol) => {
       const position = source.getLineAndCharacterOfPosition(node?.getStart(source) ?? 0);
@@ -82,90 +186,33 @@ export function analyzeTypescript(root, files, config, dependencyGraph) {
       return [...lines].filter(line => line >= start && line <= end).length;
     };
     addMetric('file', lines.size, null, null);
-    const name = path.basename(file).replace(/\.(?:ts|tsx|mts|cts)$/, '').replace(/\.(?:test|spec|config|server|client)$/, '');
+    const name = path.basename(file).replace(/\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/, '').replace(/\.(?:test|spec|config|server|client)$/, '');
     if (fileNaming(file, config).files && !/^(?:[a-z][a-z0-9]*(?:-[a-z0-9]+)*|\[\[?\.?\.?\.?[A-Za-z][\w]*\]?\]|\([\w-]+\)|_[a-z]+)$/.test(name)) {
-      findings.push(finding('naming/file', file, 1, 1, `File name '${name}' is not kebab-case`, 'Use kebab-case unless this is a framework-mandated file; disable file naming using a scoped override only if necessary.'));
+      findings.push(finding('naming/file', { file: file, line: 1, column: 1, message: `File name '${name}' is not kebab-case`, guidance: 'Use kebab-case unless this is a framework-mandated file; disable file naming using a scoped override only if necessary.' }));
     }
     const imports = [];
     for (const diagnostic of source.parseDiagnostics) {
       const pos = source.getLineAndCharacterOfPosition(diagnostic.start ?? 0);
-      findings.push(finding(`typescript/syntax-${diagnostic.code}`, file, pos.line + 1, pos.character + 1, ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'), 'Fix syntax before evaluating the structure of this file.'));
+      findings.push(finding(`typescript/syntax-${diagnostic.code}`, { file: file, line: pos.line + 1, column: pos.character + 1, message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'), guidance: 'Fix syntax before evaluating the structure of this file.' }));
     }
-    function visit(node) {
-      if (config.project.react && (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))) {
-        const tag = node.tagName.getText();
-        const attributes = node.attributes.properties;
-        const spread = attributes.some(a => ts.isJsxSpreadAttribute(a));
-        const has = name => attributes.some(a => ts.isJsxAttribute(a) && a.name.getText() === name);
-        const pos = source.getLineAndCharacterOfPosition(node.getStart(source));
-        if (tag === 'img' && !has('alt') && !spread) findings.push(finding('accessibility/image-alt', file, pos.line + 1, pos.character + 1, 'Image has no alt attribute', 'Provide meaningful alt text, or alt="" for a decorative image.'));
-        if (tag === 'button' && !has('type') && !spread) findings.push(finding('react/button-type', file, pos.line + 1, pos.character + 1, 'Button has no explicit type', 'Use type="button" unless this button intentionally submits or resets a form.'));
-      }
-      if (functionNode(node) && node.body) {
-        const symbol = symbolOf(node);
-        const component = config.project.react && /^[A-Z]/.test(symbol) && !ts.isMethodDeclaration(node);
-        addMetric(component ? 'component' : 'function', span(node), node, symbol);
-        const values = { ...complexity(node), parameters: node.parameters.length };
-        for (const [kind, value] of Object.entries(values)) addMetric(kind, value, node, symbol);
-      }
-      if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) addMetric('class', span(node), node, symbolOf(node));
-      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) imports.push({ specifier: node.moduleSpecifier.text, node, erased: erasedImport(node) });
-      if (ts.isCallExpression(node) && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0]) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) imports.push({ specifier: node.arguments[0].text, node });
-      ts.forEachChild(node, visit);
-    }
-    visit(source);
+
+
+
+
+    const context = { root, file, config, source, options, imports, servers, dependencyGraph, findings, addMetric, span };
+    visit(source, context);
     if (!source.parseDiagnostics.length) findings.push(...codeHealth(source, file));
-    const edges = [], runtimeEdges = [];
-    for (const { specifier, node, erased } of imports) {
-      if (!erased && config.project.next && (specifier === 'server-only' || specifier === 'next/headers' || specifier.startsWith('node:'))) servers.add(file);
-      const resolved = ts.resolveModuleName(specifier, path.join(root, file), options, ts.sys).resolvedModule;
-      if (!resolved) {
-        if (dependencyGraph) dependencyGraph.unresolved.push({ file, specifier, line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1 });
-        continue;
-      }
-      const target = path.relative(root, resolved.resolvedFileName).replaceAll('\\', '/');
-      if (target.startsWith('../') || target.includes('node_modules/')) continue;
-      edges.push(target);
-      if (!erased) runtimeEdges.push(target);
-      const pos = source.getLineAndCharacterOfPosition(node.getStart(source));
-      if (dependencyGraph) dependencyGraph.edges.push({ source: file, target, relation: 'imports', proof: 'compiler-resolved', typeOnly: Boolean(erased), evidence: { file, line: pos.line + 1, column: pos.character + 1, specifier } });
-      for (const boundary of config.boundaries) if (matches(file, boundary.from) && matches(target, boundary.disallow)) {
-        findings.push(finding('architecture/import-boundary', file, pos.line + 1, pos.character + 1,
-          `Import '${specifier}' crosses a configured boundary`, boundary.reason || 'Move this dependency behind the configured ownership boundary.', { evidence: { target, specifier } }));
-      }
-    }
+    const { edges, runtimeEdges } = resolveImports(context);
     graph.set(file, edges);
     runtimeGraph.set(file, runtimeEdges);
   }
-  findings.push(...cycles(graph));
-  findings.push(...unreachableModules(graph, config));
-  for (const client of clients) {
-    const visited = new Set();
-    const pending = [[client]];
-    while (pending.length) {
-      const chain = pending.pop(), file = chain.at(-1);
-      if (visited.has(file)) continue;
-      visited.add(file);
-      if (servers.has(file)) findings.push(finding('next/client-server-boundary', client, 1, 1, 'Client module reaches a server-only dependency', 'Move the server operation behind a server-owned boundary and pass serializable data into the client component.', { evidence: { chain } }));
-      for (const target of runtimeGraph.get(file) ?? []) if (runtimeGraph.has(target)) pending.push([...chain, target]);
-    }
-  }
-  return findings;
+
+function checkImportBoundaries(context, location) {
+  const { config, file, findings } = context;
+  const { target, specifier, pos } = location;
+      for (const boundary of config.boundaries) if (matches(file, boundary.from) && matches(target, boundary.disallow)) {
+        findings.push(finding('architecture/import-boundary', { file: file, line: pos.line + 1, column: pos.character + 1, message: `Import '${specifier}' crosses a configured boundary`, guidance: boundary.reason || 'Move this dependency behind the configured ownership boundary.', ...{ evidence: { target, specifier } } }));
+      }
 }
-export function cycles(graph) {
-  const state = new Map(), stack = [], findings = [], emitted = new Set();
-  function visit(file) {
-    if (state.get(file) === 2) return;
-    if (state.get(file) === 1) {
-      const cycle = [...stack.slice(stack.indexOf(file)), file];
-      const key = [...new Set(cycle)].sort().join('|');
-      if (!emitted.has(key)) findings.push(finding('architecture/circular-import', file, 1, 1, 'Circular local import dependency', 'Remove the cycle by placing shared contracts in a module both sides can depend on, or correcting dependency direction.', { evidence: { cycle } }));
-      emitted.add(key); return;
-    }
-    state.set(file, 1); stack.push(file);
-    for (const target of graph.get(file) ?? []) if (graph.has(target)) visit(target);
-    stack.pop(); state.set(file, 2);
-  }
-  for (const file of [...graph.keys()].sort()) visit(file);
-  return findings;
-}
+
+function serverSpecifier(specifier) { return ['server-only', 'next/headers'].includes(specifier) || specifier.startsWith('node:'); }

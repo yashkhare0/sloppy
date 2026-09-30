@@ -7,17 +7,7 @@ import { versions } from './engines.js';
 export function buildReport(root, config, files, checks, findings) {
   for (const item of findings) item.ownership = item.file.startsWith('../') || /(^|\/)node_modules\//.test(item.file) ? 'dependency' : matches(item.file, config.exclude ?? []) ? 'excluded' : 'project';
   findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column || a.ruleId.localeCompare(b.ruleId));
-  let staleBaseline = [];
-  if (config.baseline) {
-    const baseline = JSON.parse(fs.readFileSync(path.resolve(root, config.baseline), 'utf8'));
-    if (baseline.version !== 1 || !Array.isArray(baseline.fingerprints) || baseline.fingerprints.some(f => typeof f !== 'string')) throw new Error('Invalid baseline');
-    const counts = new Map();
-    for (const fingerprint of baseline.fingerprints) counts.set(fingerprint, (counts.get(fingerprint) ?? 0) + 1);
-    for (const item of findings) if (counts.get(item.fingerprint) > 0) {
-      item.baseline = true; counts.set(item.fingerprint, counts.get(item.fingerprint) - 1);
-    }
-    staleBaseline = [...counts.entries()].filter(([, count]) => count > 0).map(([fingerprint, count]) => ({ fingerprint, count }));
-  }
+  const staleBaseline = applyBaseline(root, config, findings);
   const errors = findings.filter(f => f.severity === 'error' && !f.baseline).length;
   const warnings = findings.filter(f => f.severity === 'warning' && !f.baseline).length;
   const complete = checks.every(c => c.status !== 'failed') && files.length > 0;
@@ -26,6 +16,7 @@ export function buildReport(root, config, files, checks, findings) {
     complete, passed: complete && errors === 0, summary: { files: files.length, errors, warnings, baseline: findings.filter(f => f.baseline).length },
     checks, findings, staleBaseline,
     reviewOnly: [
+      'JavaScript receives structural analysis and linting, not TypeScript type checking. Passing static checks does not certify production readiness or runtime correctness.',
       'Whether abstractions earn their complexity and canonical helpers are reused.',
       'Whether local, URL, server, and global state have the appropriate ownership.',
       'Whether updates need transactional atomicity or async work can safely run in parallel.',
@@ -76,4 +67,19 @@ export function writeReport(report, directory) {
   lines.push('## Requires human or agent review', '', ...report.reviewOnly.map(r => `- ${r}`), '');
   if (report.staleBaseline.length) lines.push(`Stale baseline entries: ${report.staleBaseline.reduce((n, e) => n + e.count, 0)}. Regenerate only after reviewing the remaining debt.`, '');
   fs.writeFileSync(path.join(directory, 'report.md'), lines.join('\n'));
+}
+
+function applyBaseline(root, config, findings) {
+  let staleBaseline = [];
+  if (config.baseline) {
+    const baseline = JSON.parse(fs.readFileSync(path.resolve(root, config.baseline), 'utf8'));
+    if (baseline.version !== 1 || !Array.isArray(baseline.fingerprints) || baseline.fingerprints.some(f => typeof f !== 'string')) throw new Error('Invalid baseline');
+    const counts = new Map();
+    for (const fingerprint of baseline.fingerprints) counts.set(fingerprint, (counts.get(fingerprint) ?? 0) + 1);
+    for (const item of findings) if (counts.get(item.fingerprint) > 0) {
+      item.baseline = true; counts.set(item.fingerprint, counts.get(item.fingerprint) - 1);
+    }
+    staleBaseline = [...counts.entries()].filter(([, count]) => count > 0).map(([fingerprint, count]) => ({ fingerprint, count }));
+  }
+  return staleBaseline;
 }

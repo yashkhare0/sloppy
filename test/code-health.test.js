@@ -10,6 +10,7 @@ import { lintTypescript, pythonLint } from '../src/engines.js';
 import { analyzePython } from '../src/python.js';
 import { analyzeTypescript } from '../src/typescript.js';
 import { buildReport, writeReport } from '../src/report.js';
+import { check } from '../src/check.js';
 
 function fixture(t, files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'code-health-'));
@@ -78,4 +79,19 @@ test('Python lint already detects unused imports and local variables', t => {
   const issues = pythonLint(root, ['sample.py'], config);
   assert.ok(issues.some(f => f.ruleId === 'ruff/F401'));
   assert.ok(issues.some(f => f.ruleId === 'ruff/F841'));
+});
+
+test('JavaScript-only projects are detected, linted and structurally assessed', async t => {
+  const { root, config } = fixture(t, { 'example.js': 'export function work(flag) { const unused = 1; if (flag) return 1; else if (flag) return 2; return 3; console.log("dead"); }' });
+  assert.equal(config.project.javascript, true);
+  assert.equal(config.checks.javascriptLint, true);
+  config.limits.complexity = [1, 2];
+  fs.writeFileSync(path.join(root, CONFIG), JSON.stringify(config));
+  const report = await check(root, path.join(root, '.sloppy'));
+  assert.equal(report.summary.files, 1);
+  assert.equal(report.complete, true);
+  assert.equal(report.passed, false);
+  assert.equal(report.checks.find(c => c.name === 'javascript-lint').status, 'completed');
+  for (const rule of ['eslint/no-unreachable', 'eslint/no-dupe-else-if', 'eslint/@typescript-eslint/no-unused-vars', 'structure/complexity']) assert.ok(report.findings.some(f => f.ruleId === rule), rule);
+  assert.equal(report.checks.find(c => c.name === 'typescript-types').status, 'skipped');
 });

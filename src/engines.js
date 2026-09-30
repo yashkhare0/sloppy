@@ -66,7 +66,7 @@ export async function lintTypescript(root, files, config) {
     plugins['@next/next'] = next;
     Object.assign(rules, next.configs.recommended.rules, next.configs['core-web-vitals'].rules);
   }
-  const glob = ['**/*.{ts,tsx,mts,cts}'];
+  const glob = ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'];
   const lint = new ESLint({
     cwd: root, overrideConfigFile: true,
     overrideConfig: [
@@ -83,9 +83,7 @@ export async function lintTypescript(root, files, config) {
     ],
   });
   const results = await lint.lintFiles(files);
-  return results.flatMap(result => result.messages.map(m => finding(`eslint/${m.line === 0 ? 'configuration' : m.ruleId ?? 'parse'}`, path.relative(root, result.filePath).replaceAll('\\', '/'), Math.max(1, m.line ?? 1), Math.max(1, m.column ?? 1),
-    m.message, m.line === 0 ? 'Resolve the compiler-option prerequisite in the applicable tsconfig; this is a file-level lint configuration failure.' : m.ruleId ? `Correct the violation of ${m.ruleId}. Consult the rule documentation; preserve the public behavior.` : 'Fix syntax or include this file in a configured TypeScript project.',
-    { severity: m.severity === 2 ? 'error' : 'warning', autoFix: Boolean(m.fix), evidence: { ...(m.line === 0 ? { originalRule: m.ruleId, locationKind: 'file-level' } : {}), endLine: m.endLine, endColumn: m.endColumn, ...(m.fix ? { replacement: m.fix } : {}) } })));
+  return results.flatMap(result => result.messages.map(m => finding(`eslint/${m.line === 0 ? 'configuration' : m.ruleId ?? 'parse'}`, { file: path.relative(root, result.filePath).replaceAll('\\', '/'), line: Math.max(1, m.line ?? 1), column: Math.max(1, m.column ?? 1), message: m.message, guidance: m.line === 0 ? 'Resolve the compiler-option prerequisite in the applicable tsconfig; this is a file-level lint configuration failure.' : m.ruleId ? `Correct the violation of ${m.ruleId}. Consult the rule documentation; preserve the public behavior.` : 'Fix syntax or include this file in a configured TypeScript project.', ...{ severity: m.severity === 2 ? 'error' : 'warning', autoFix: Boolean(m.fix), evidence: { ...(m.line === 0 ? { originalRule: m.ruleId, locationKind: 'file-level' } : {}), endLine: m.endLine, endColumn: m.endColumn, ...(m.fix ? { replacement: m.fix } : {}) } } })));
 }
 export function typescriptTypes(root, config, files = []) {
   const findings = [], covered = new Set();
@@ -97,18 +95,12 @@ export function typescriptTypes(root, config, files = []) {
     if (!parsed.fileNames.length && parsed.projectReferences?.length) continue;
     if (parsed.errors.length) throw new Error(parsed.errors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('\n'));
     for (const option of config.typescript.requiredOptions) {
-      if (parsed.options[option] !== true) findings.push(finding('typescript/required-option', project, 1, 1,
-        `TypeScript option ${option} must be true`, `Enable ${option} in this project's tsconfig or its inherited config.`, { evidence: { option, actual: parsed.options[option] ?? null, expected: true } }));
+      if (parsed.options[option] !== true) findings.push(finding('typescript/required-option', { file: project, line: 1, column: 1, message: `TypeScript option ${option} must be true`, guidance: `Enable ${option} in this project's tsconfig or its inherited config.`, ...{ evidence: { option, actual: parsed.options[option] ?? null, expected: true } } }));
     }
-    const rootFiles = files.length ? [...new Set([...files.map(f => path.resolve(root, f)).filter(f => parsed.fileNames.some(p => path.resolve(p).toLowerCase() === f.toLowerCase())), ...parsed.fileNames.filter(f => f.endsWith('.d.ts'))])] : parsed.fileNames;
+    const rootFiles = selectedProjectFiles(root, files, parsed.fileNames);
     const program = ts.createProgram(rootFiles, { ...parsed.options, noEmit: true, incremental: false });
     for (const source of program.getSourceFiles()) covered.add(path.resolve(source.fileName).toLowerCase());
-    for (const d of ts.getPreEmitDiagnostics(program)) {
-      const location = d.file && d.start !== undefined ? d.file.getLineAndCharacterOfPosition(d.start) : null;
-      findings.push(finding(`typescript/TS${d.code}`, d.file ? path.relative(root, d.file.fileName).replaceAll('\\', '/') : project,
-        (location?.line ?? 0) + 1, (location?.character ?? 0) + 1, ts.flattenDiagnosticMessageText(d.messageText, '\n'),
-        'Resolve the compiler error at its source; do not silence it with casts or blanket suppressions.'));
-    }
+    findings.push(...compilerFindings(program, root, project));
   }
   const uncovered = files.filter(file => !covered.has(path.resolve(root, file).toLowerCase()));
   if (uncovered.length) {
@@ -117,6 +109,12 @@ export function typescriptTypes(root, config, files = []) {
     throw error;
   }
   return findings;
+}
+function selectedProjectFiles(root, files, configured) {
+  if (!files.length) return configured;
+  const membership = new Set(configured.map(file => path.resolve(file).toLowerCase()));
+  const selected = files.map(file => path.resolve(root, file)).filter(file => membership.has(file.toLowerCase()));
+  return [...new Set([...selected, ...configured.filter(file => file.endsWith('.d.ts'))])];
 }
 export function pythonLint(root, files, config) {
   const issues = [];
@@ -130,8 +128,7 @@ export function pythonLint(root, files, config) {
       issues.push(...JSON.parse(result.stdout));
     }
   }
-  return issues.map(m => finding(`ruff/${m.code}`, path.relative(root, m.filename).replaceAll('\\', '/'), m.location.row, m.location.column, m.message,
-    m.fix?.message || `Correct ${m.code}; see ${m.url}.`, { autoFix: m.fix?.applicability === 'safe', evidence: { endLine: m.end_location.row, endColumn: m.end_location.column, documentation: m.url, fix: m.fix } }));
+  return issues.map(m => finding(`ruff/${m.code}`, { file: path.relative(root, m.filename).replaceAll('\\', '/'), line: m.location.row, column: m.location.column, message: m.message, guidance: m.fix?.message || `Correct ${m.code}; see ${m.url}.`, ...{ autoFix: m.fix?.applicability === 'safe', evidence: { endLine: m.end_location.row, endColumn: m.end_location.column, documentation: m.url, fix: m.fix } } }));
 }
 export function pythonTypes(root, files, config) {
   const directory = fs.mkdtempSync(path.join(root, '.sloppy-pyright-'));
@@ -150,8 +147,7 @@ export function pythonTypes(root, files, config) {
     if (![0, 1].includes(result.status)) throw new Error(result.stderr || result.stdout || 'Pyright failed');
     const report = JSON.parse(result.stdout);
     if (report.summary.filesAnalyzed < files.length) throw new Error(`Pyright analyzed ${report.summary.filesAnalyzed} files; expected at least ${files.length}. ${result.stderr}`);
-    return report.generalDiagnostics.map(d => finding(`pyright/${d.rule ?? 'type-error'}`, path.relative(root, d.file).replaceAll('\\', '/'), d.range.start.line + 1, d.range.start.character + 1, d.message,
-      'Fix the type contract or validate and narrow external data before use.', { severity: d.severity === 'error' ? 'error' : 'warning', evidence: { endLine: d.range.end.line + 1, endColumn: d.range.end.character + 1 } }));
+    return report.generalDiagnostics.map(d => finding(`pyright/${d.rule ?? 'type-error'}`, { file: path.relative(root, d.file).replaceAll('\\', '/'), line: d.range.start.line + 1, column: d.range.start.character + 1, message: d.message, guidance: 'Fix the type contract or validate and narrow external data before use.', ...{ severity: d.severity === 'error' ? 'error' : 'warning', evidence: { endLine: d.range.end.line + 1, endColumn: d.range.end.character + 1 } } }));
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
@@ -164,20 +160,8 @@ export function isolatedTypescript(engine, root, files, config, onProgress) {
     if (output.error) { const error = new Error(output.error); error.findings = output.findings; throw error; }
     return output.findings;
   }
-  const projects = config.typescript.projects.map(project => {
-    const absolute = path.resolve(root, project);
-    const read = ts.readConfigFile(absolute, ts.sys.readFile);
-    if (read.error) throw new Error(ts.flattenDiagnosticMessageText(read.error.messageText, '\n'));
-    const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(absolute), undefined, absolute);
-    return { project, directory: path.dirname(absolute), files: new Set(parsed.fileNames.map(f => path.resolve(f).toLowerCase())) };
-  }).sort((a, b) => b.directory.length - a.directory.length || a.project.localeCompare(b.project));
-  const groups = new Map(), uncovered = [], findings = [], failures = [];
-  for (const file of files) {
-    const project = projects.find(p => p.files.has(path.resolve(root, file).toLowerCase()));
-    if (!project) { uncovered.push(file); continue; }
-    if (!groups.has(project.project)) groups.set(project.project, []);
-    groups.get(project.project).push(file);
-  }
+  const { groups, uncovered } = groupTypescriptSources(root, files, config);
+  const findings = [], failures = [];
   for (const [project, selected] of groups) {
     try {
       const scoped = { ...config, typescript: { ...config.typescript, projects: [project] } };
@@ -197,4 +181,35 @@ export function isolatedTypescript(engine, root, files, config, onProgress) {
     throw error;
   }
   return unique;
+}
+
+export function lintJavascript(root, files, config) {
+  return lintTypescript(root, files, { ...config, checks: { ...config.checks, typescriptTypes: false } });
+}
+
+function groupTypescriptSources(root, files, config) {
+  const projects = config.typescript.projects.map(project => {
+    const absolute = path.resolve(root, project);
+    const read = ts.readConfigFile(absolute, ts.sys.readFile);
+    if (read.error) throw new Error(ts.flattenDiagnosticMessageText(read.error.messageText, '\n'));
+    const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(absolute), undefined, absolute);
+    return { project, directory: path.dirname(absolute), files: new Set(parsed.fileNames.map(f => path.resolve(f).toLowerCase())) };
+  }).sort((a, b) => b.directory.length - a.directory.length || a.project.localeCompare(b.project));
+  const groups = new Map(), uncovered = [];
+  for (const file of files) {
+    const project = projects.find(p => p.files.has(path.resolve(root, file).toLowerCase()));
+    if (!project) { uncovered.push(file); continue; }
+    if (!groups.has(project.project)) groups.set(project.project, []);
+    groups.get(project.project).push(file);
+  }
+  return { groups, uncovered };
+}
+
+function compilerFindings(program, root, project) {
+  const findings = [];
+    for (const d of ts.getPreEmitDiagnostics(program)) {
+      const location = d.file && d.start !== undefined ? d.file.getLineAndCharacterOfPosition(d.start) : null;
+      findings.push(finding(`typescript/TS${d.code}`, { file: d.file ? path.relative(root, d.file.fileName).replaceAll('\\', '/') : project, line: (location?.line ?? 0) + 1, column: (location?.character ?? 0) + 1, message: ts.flattenDiagnosticMessageText(d.messageText, '\n'), guidance: 'Resolve the compiler error at its source; do not silence it with casts or blanket suppressions.' }));
+    }
+  return findings;
 }

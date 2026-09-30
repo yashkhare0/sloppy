@@ -18,12 +18,14 @@ export function codeHealth(source, file) {
   const findings = [], bodies = new Map();
   function add(rule, node, message, guidance, evidence = {}) {
     const pos = source.getLineAndCharacterOfPosition(node.getStart(source));
-    findings.push(finding(rule, file, pos.line + 1, pos.character + 1, message, guidance,
-      { severity: 'warning', evidence: { confidence: 'review-candidate', ...evidence } }));
+    findings.push(finding(rule, { file: file, line: pos.line + 1, column: pos.character + 1, message: message, guidance: guidance, ...{ severity: 'warning', evidence: { confidence: 'review-candidate', ...evidence } } }));
   }
   function visit(node) {
     const callable = ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node);
-    if (callable && node.body) {
+    if (callable && node.body) inspectFunction(node);
+    ts.forEachChild(node, visit);
+  }
+  function inspectFunction(node) {
       const sequence = tokens(node.body, source);
       if (sequence.length >= 40) {
         const key = JSON.stringify(sequence), previous = bodies.get(key);
@@ -32,21 +34,31 @@ export function codeHealth(source, file) {
           { originalLine: source.getLineAndCharacterOfPosition(previous.getStart(source)).line + 1, tokenCount: sequence.length });
         else bodies.set(key, node);
       }
-      const expression = ts.isBlock(node.body) ? node.body.statements.length === 1 && ts.isReturnStatement(node.body.statements[0]) && node.body.statements[0].expression : node.body;
-      if (expression && ts.isCallExpression(expression) && ts.isIdentifier(expression.expression) &&
-          (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isVariableDeclaration(node.parent)) &&
-          !(node.type && ts.isTypePredicateNode(node.type)) &&
-          !node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) && !node.asteriskToken &&
-          node.parameters.length > 0 && node.parameters.length === expression.arguments.length &&
-          node.parameters.every((p, i) => ts.isIdentifier(p.name) && !p.dotDotDotToken && !p.initializer && ts.isIdentifier(expression.arguments[i]) && p.name.text === expression.arguments[i].text)) {
+      if (isPassThrough(node)) {
         add('maintainability/pass-through-wrapper', node, 'Wrapper only forwards its parameters to another function',
           'Check whether this wrapper provides a public contract, framework adapter, or ownership boundary. Inline only if those roles and function identity are unnecessary.');
       }
-    }
-    ts.forEachChild(node, visit);
   }
   visit(source);
   return findings;
+}
+function returnedExpression(body) {
+  if (!ts.isBlock(body)) return body;
+  if (body.statements.length !== 1) return null;
+  const statement = body.statements[0];
+  return ts.isReturnStatement(statement) ? statement.expression : null;
+}
+function isPassThrough(node) {
+  const named = ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isVariableDeclaration(node.parent);
+  if (!named || node.asteriskToken || node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword)) return false;
+  if (node.type && ts.isTypePredicateNode(node.type)) return false;
+  const expression = returnedExpression(node.body);
+  if (!expression || !ts.isCallExpression(expression) || !ts.isIdentifier(expression.expression)) return false;
+  return forwardsParameters(node.parameters, expression.arguments);
+}
+function forwardsParameters(parameters, args) {
+  if (!parameters.length || parameters.length !== args.length) return false;
+  return parameters.every((p, i) => ts.isIdentifier(p.name) && !p.dotDotDotToken && !p.initializer && ts.isIdentifier(args[i]) && p.name.text === args[i].text);
 }
 
 export function unreachableModules(graph, config) {
@@ -61,8 +73,5 @@ export function unreachableModules(graph, config) {
     reached.add(file);
     pending.push(...(graph.get(file) ?? []));
   }
-  return [...graph.keys()].filter(file => !reached.has(file)).sort().map(file => finding('dead-code/unreachable-module-candidate', file, 1, 1,
-    'Module is not reachable from the configured entry points through resolved imports',
-    'Verify framework discovery, package exports, scripts, tests, plugins, and computed dynamic imports before deleting. Add external entry points or protected globs when appropriate.',
-    { severity: 'warning', evidence: { confidence: 'review-candidate', entryPoints: policy.entryPoints, protected: policy.protected, graph: 'resolved TypeScript imports including type-only edges', limitation: 'External consumers, reflection, framework discovery, and computed dynamic imports are not proven absent.' } }));
+  return [...graph.keys()].filter(file => !reached.has(file)).sort().map(file => finding('dead-code/unreachable-module-candidate', { file: file, line: 1, column: 1, message: 'Module is not reachable from the configured entry points through resolved imports', guidance: 'Verify framework discovery, package exports, scripts, tests, plugins, and computed dynamic imports before deleting. Add external entry points or protected globs when appropriate.', ...{ severity: 'warning', evidence: { confidence: 'review-candidate', entryPoints: policy.entryPoints, protected: policy.protected, graph: 'resolved TypeScript imports including type-only edges', limitation: 'External consumers, reflection, framework discovery, and computed dynamic imports are not proven absent.' } } }));
 }

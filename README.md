@@ -2,6 +2,8 @@
 
 A deterministic local quality gate for Python and TypeScript, including React, Next.js, and shadcn projects. No model calls, agent execution, or network requests during assessment.
 
+JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`) is also detected and receives ESLint and structural analysis. It does not receive TypeScript type checking. This repository includes an explicit `.sloppy.json`; CI runs both its regression tests and its own assessment. Warnings remain visible and do not fail the gate. No baseline suppresses self-assessment findings.
+
 ## Installation
 
 Requires Node 22.13+ on the 22.x line or Node 24+, Python 3.10+, Git, and Ruff. Install from source:

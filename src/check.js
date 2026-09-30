@@ -1,7 +1,7 @@
 import { discover, load, matches } from './config.js';
 import { analyzeTypescript } from './typescript.js';
 import { analyzePython } from './python.js';
-import { isolatedTypescript, pythonLint, pythonTypes } from './engines.js';
+import { isolatedTypescript, lintJavascript, pythonLint, pythonTypes } from './engines.js';
 import { buildReport, writeReport } from './report.js';
 
 export async function check(root, output, configPath) {
@@ -16,10 +16,12 @@ export async function check(root, output, configPath) {
   const files = discover(root, config.exclude).filter(f => matches(f, config.include));
   const ts = files.filter(f => /\.(?:ts|tsx|mts|cts)$/.test(f));
   const py = files.filter(f => f.endsWith('.py'));
+  const js = files.filter(f => /\.(?:js|jsx|mjs|cjs)$/.test(f));
   const findings = [], checks = [];
-  const dependencyGraph = { version: 1, scope: 'TypeScript static imports only; excludes external packages', nodes: ts, edges: [], unresolved: [] };
+  const scriptFiles = [...ts, ...js];
+  const dependencyGraph = { version: 1, scope: 'JavaScript and TypeScript static imports; excludes external packages', nodes: scriptFiles, edges: [], unresolved: [] };
   function checkpoint(name, partial = []) {
-    dependencyGraph.nodes = [...new Set([...ts, ...dependencyGraph.edges.map(e => e.target)])].sort();
+    dependencyGraph.nodes = [...new Set([...scriptFiles, ...dependencyGraph.edges.map(e => e.target)])].sort();
     const report = buildReport(root, { ...config, baseline: null }, files,
       [...checks, { name, status: 'failed', detail: 'Assessment interrupted before this engine completed; rerun required.' }], [...findings, ...partial]);
     report.dependencyGraph = dependencyGraph;
@@ -37,8 +39,9 @@ export async function check(root, output, configPath) {
       checks.push({ name, status: parseFailures.length ? 'failed' : 'completed', findings: issues.length, ...(parseFailures.length ? { detail: `${parseFailures.length} lint parsing, project coverage or compiler-option prerequisites failed.` } : {}) });
     } catch (error) { if (error.findings) findings.push(...error.findings); checks.push({ name, status: 'failed', detail: error.message }); }
   }
-  await engine('typescript-structure', true, ts.length > 0, () => analyzeTypescript(root, ts, config, dependencyGraph));
+  await engine('typescript-structure', true, scriptFiles.length > 0, () => analyzeTypescript(root, scriptFiles, config, dependencyGraph));
   await engine('python-structure', true, py.length > 0, () => analyzePython(root, py, config));
+  await engine('javascript-lint', config.checks.javascriptLint !== false, js.length > 0, () => lintJavascript(root, js, config));
   await engine('typescript-lint', config.checks.typescriptLint, ts.length > 0, () => isolatedTypescript('typescript-lint', root, ts, config, partial => checkpoint('typescript-lint', partial)));
   await engine('typescript-types', config.checks.typescriptTypes, ts.length > 0, () => isolatedTypescript('typescript-types', root, ts, config, partial => checkpoint('typescript-types', partial)));
   await engine('python-lint', config.checks.pythonLint, py.length > 0, () => pythonLint(root, py, config));
@@ -50,7 +53,7 @@ export async function check(root, output, configPath) {
     checks.push({ name: 'baseline', status: 'failed', detail: error.message });
     report = buildReport(root, { ...config, baseline: null }, files, checks, findings);
   }
-  dependencyGraph.nodes = [...new Set([...ts, ...dependencyGraph.edges.map(e => e.target)])].sort();
+  dependencyGraph.nodes = [...new Set([...scriptFiles, ...dependencyGraph.edges.map(e => e.target)])].sort();
   report.dependencyGraph = dependencyGraph;
   if (configPath) report.configFile = configPath;
   writeReport(report, output);

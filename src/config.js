@@ -19,6 +19,7 @@ export function detect(root, files = discover(root, ignored)) {
   }
   return {
     typescript: files.some(f => /\.(?:ts|tsx|mts|cts)$/.test(f)),
+    javascript: files.some(f => /\.(?:js|jsx|mjs|cjs)$/.test(f)),
     python: files.some(f => f.endsWith('.py')) || fs.existsSync(path.join(root, 'pyproject.toml')),
     react: Boolean(deps.react || deps.next), next: Boolean(deps.next),
     shadcn: files.some(f => /(^|\/)components\.json$/.test(f)),
@@ -35,34 +36,17 @@ export function defaults(root) {
       exclude.push(`${directory === '.' ? '' : directory + '/'}.source/**`);
     }
   }
-  const configs = files.filter(f => /(^|\/)tsconfig\.json$/.test(f));
-  for (let i = 0; i < configs.length; i++) {
-    const absolute = path.resolve(root, configs[i]);
-    const parsed = ts.readConfigFile(absolute, ts.sys.readFile);
-    for (const reference of parsed.config?.references ?? []) {
-      const target = path.resolve(path.dirname(absolute), reference.path);
-      const filename = target.endsWith('.json') ? target : path.join(target, 'tsconfig.json');
-      const relative = path.relative(root, filename).replaceAll('\\', '/');
-      if (!relative.startsWith('../') && files.includes(relative) && !configs.includes(relative)) configs.push(relative);
-    }
-  }
-  const activeConfigs = configs.filter(project => {
-    const absolute = path.resolve(root, project);
-    const read = ts.readConfigFile(absolute, ts.sys.readFile);
-    if (read.error) return true;
-    const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(absolute), undefined, absolute);
-    return parsed.fileNames.length > 0 || Boolean(parsed.projectReferences?.length) || parsed.errors.some(e => e.code !== 18003);
-  });
+  const activeConfigs = detectTypescriptProjects(root, files);
   return structuredClone({
     version: 1, project,
-    include: ['**/*.{ts,tsx,mts,cts,py}'],
+    include: ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,py}'],
     exclude,
     limits, overrides: [{ files: ['**/*.test.*', '**/*.spec.*', '**/test_*.py', '**/tests/**', '**/test/**'], reason: 'Tests often contain repetitive arrangements and assertions.', limits: { file: [500, 800], function: [80, 160] } }],
     naming: { files: true, identifiers: true },
     boundaries: [
       { from: ['src/shared/**', 'src/lib/**'], disallow: ['src/features/**', 'src/app/**'], reason: 'Shared modules must not depend on application features.' },
     ],
-    checks: { typescriptLint: project.typescript, typescriptTypes: project.typescript, pythonLint: project.python, pythonTypes: project.python },
+    checks: { javascriptLint: project.javascript, typescriptLint: project.typescript, typescriptTypes: project.typescript, pythonLint: project.python, pythonTypes: project.python },
     typescript: { projects: activeConfigs.length ? activeConfigs : ['tsconfig.json'], requiredOptions: ['strict', 'noUncheckedIndexedAccess', 'exactOptionalPropertyTypes'], eslintRules: {} },
     python: { executable: 'python', ruffExecutable: 'ruff', ruffSelect: ['E4', 'E7', 'E9', 'F', 'B', 'I', 'N', 'ASYNC', 'ANN', 'BLE', 'PGH', 'RUF'], typeCheckingMode: 'strict' },
     baseline: null,
@@ -74,36 +58,28 @@ export function load(root, configPath = path.join(root, CONFIG)) {
   const allowed = ['version', 'project', 'include', 'exclude', 'limits', 'overrides', 'naming', 'boundaries', 'checks', 'typescript', 'python', 'baseline', 'deadCode'];
   for (const k of Object.keys(c)) if (!allowed.includes(k)) throw new Error(`Unknown configuration key: ${k}`);
   if (c.version !== 1) throw new Error('Unsupported configuration version');
-  for (const k of ['include', 'exclude']) if (!Array.isArray(c[k]) || c[k].some(v => typeof v !== 'string')) throw new Error(`${k} must be a list of glob patterns`);
-  if (!c.include.length) throw new Error('include cannot be empty');
+  validateSourcePatterns(c);
   validateLimits(c.limits);
   if (!Array.isArray(c.overrides) || !Array.isArray(c.boundaries)) throw new Error('overrides and boundaries must be arrays');
-  for (const o of c.overrides) {
-    if (!Array.isArray(o.files) || o.files.some(f => typeof f !== 'string')) throw new Error('Override files must be glob patterns');
-    validateLimits(o.limits, true);
-    if (typeof o.reason !== 'string' || o.reason.trim().length < 10) throw new Error('Every override requires a reason of at least 10 characters');
-    for (const k of Object.keys(o)) if (!['files', 'limits', 'reason', 'naming'].includes(k)) throw new Error(`Unknown override key: ${k}`);
-    if (o.naming) validateFlags(o.naming, ['files', 'identifiers'], 'override.naming', true);
-  }
-  for (const b of c.boundaries) if (!Array.isArray(b.from) || !Array.isArray(b.disallow) || [...b.from, ...b.disallow].some(f => typeof f !== 'string')) throw new Error('Boundary patterns must be lists of strings');
-  for (const k of ['typescriptLint', 'typescriptTypes', 'pythonLint', 'pythonTypes']) if (typeof c.checks?.[k] !== 'boolean') throw new Error(`checks.${k} must be boolean`);
-  for (const k of ['files', 'identifiers']) if (typeof c.naming?.[k] !== 'boolean') throw new Error(`naming.${k} must be boolean`);
-  validateFlags(c.naming, ['files', 'identifiers'], 'naming');
-  validateFlags(c.checks, ['typescriptLint', 'typescriptTypes', 'pythonLint', 'pythonTypes'], 'checks');
-  validateFlags(c.project, ['typescript', 'python', 'react', 'next', 'shadcn'], 'project');
-  if (!Array.isArray(c.typescript?.projects) || !Array.isArray(c.typescript?.requiredOptions) || !c.typescript.eslintRules || typeof c.typescript.eslintRules !== 'object') throw new Error('Invalid typescript configuration');
+  validateOverrides(c);
+  validateBoundaries(c);
+  validatePolicyFlags(c);
+  validateTypescriptShape(c);
   if (!c.python || !['off', 'basic', 'standard', 'strict'].includes(c.python.typeCheckingMode)) throw new Error('Invalid Python type checking mode');
-  for (const field of ['projects', 'requiredOptions']) if (c.typescript[field].some(p => typeof p !== 'string' || !p)) throw new Error(`typescript.${field} must contain nonempty strings`);
-  if (c.checks.typescriptTypes && !c.typescript.projects.length) throw new Error('Type checking requires at least one TypeScript project');
-  for (const field of ['executable', 'ruffExecutable']) if (typeof c.python[field] !== 'string' || !c.python[field]) throw new Error(`python.${field} is required`);
-  if (!Array.isArray(c.python.ruffSelect) || !c.python.ruffSelect.length || c.python.ruffSelect.some(r => typeof r !== 'string')) throw new Error('python.ruffSelect must be a nonempty rule list');
-  for (const [key, allowed] of Object.entries({ typescript: ['projects', 'requiredOptions', 'eslintRules'], python: ['executable', 'ruffExecutable', 'ruffSelect', 'typeCheckingMode'] })) for (const name of Object.keys(c[key])) if (!allowed.includes(name)) throw new Error(`Unknown ${key} key: ${name}`);
+  validateTypescriptProjects(c);
+  validatePythonTools(c);
+  validateEngineKeys(c);
   if (c.baseline !== null && typeof c.baseline !== 'string') throw new Error('baseline must be null or a file path');
-  if (c.deadCode !== undefined) {
-    if (!c.deadCode || typeof c.deadCode !== 'object' || Object.keys(c.deadCode).some(k => !['entryPoints', 'protected'].includes(k))) throw new Error('Invalid deadCode configuration');
-    for (const field of ['entryPoints', 'protected']) if (!Array.isArray(c.deadCode[field]) || c.deadCode[field].some(p => typeof p !== 'string' || !p)) throw new Error(`deadCode.${field} must contain glob patterns`);
-  }
+  validateDeadCode(c);
   return c;
+}
+function validateSourcePatterns(c) {
+  for (const k of ['include', 'exclude']) if (!Array.isArray(c[k]) || c[k].some(v => typeof v !== 'string')) throw new Error(`${k} must be a list of glob patterns`);
+  if (!c.include.length) throw new Error('include cannot be empty');
+}
+function validateEngineKeys(c) {
+  const keys = { typescript: ['projects', 'requiredOptions', 'eslintRules'], python: ['executable', 'ruffExecutable', 'ruffSelect', 'typeCheckingMode'] };
+  for (const [key, allowed] of Object.entries(keys)) for (const name of Object.keys(c[key])) if (!allowed.includes(name)) throw new Error(`Unknown ${key} key: ${name}`);
 }
 function validateFlags(value, keys, label, partial = false) {
   if (!value || typeof value !== 'object') throw new Error(`${label} must be an object`);
@@ -145,4 +121,75 @@ export function discover(root, exclude) {
   }
   walk(root);
   return files;
+}
+
+function validateOverrides(c) {
+  for (const o of c.overrides) {
+    if (!Array.isArray(o.files) || o.files.some(f => typeof f !== 'string')) throw new Error('Override files must be glob patterns');
+    validateLimits(o.limits, true);
+    if (typeof o.reason !== 'string' || o.reason.trim().length < 10) throw new Error('Every override requires a reason of at least 10 characters');
+    for (const k of Object.keys(o)) if (!['files', 'limits', 'reason', 'naming'].includes(k)) throw new Error(`Unknown override key: ${k}`);
+    if (o.naming) validateFlags(o.naming, ['files', 'identifiers'], 'override.naming', true);
+  }
+}
+
+function validateBoundaries(c) {
+  for (const b of c.boundaries) if (!Array.isArray(b.from) || !Array.isArray(b.disallow) || [...b.from, ...b.disallow].some(f => typeof f !== 'string')) throw new Error('Boundary patterns must be lists of strings');
+}
+
+function validatePolicyFlags(c) {
+  for (const k of ['typescriptLint', 'typescriptTypes', 'pythonLint', 'pythonTypes']) if (typeof c.checks?.[k] !== 'boolean') throw new Error(`checks.${k} must be boolean`);
+  for (const k of ['files', 'identifiers']) if (typeof c.naming?.[k] !== 'boolean') throw new Error(`naming.${k} must be boolean`);
+  validateFlags(c.naming, ['files', 'identifiers'], 'naming');
+  validateFlags(c.checks, ['typescriptLint', 'typescriptTypes', 'pythonLint', 'pythonTypes', 'javascriptLint'], 'checks', true);
+  if (c.checks.javascriptLint !== undefined && typeof c.checks.javascriptLint !== 'boolean') throw new Error('checks.javascriptLint must be boolean');
+  validateProject(c.project);
+}
+function validateProject(project) {
+  const required = ['typescript', 'python', 'react', 'next', 'shadcn'];
+  validateFlags(project, [...required, 'javascript'], 'project', true);
+  for (const key of required) if (!(key in project)) throw new Error('project is missing a required flag');
+}
+
+function validateTypescriptShape(c) {
+  if (!Array.isArray(c.typescript?.projects) || !Array.isArray(c.typescript?.requiredOptions) || !c.typescript.eslintRules || typeof c.typescript.eslintRules !== 'object') throw new Error('Invalid typescript configuration');
+}
+
+function validateTypescriptProjects(c) {
+  for (const field of ['projects', 'requiredOptions']) if (c.typescript[field].some(p => typeof p !== 'string' || !p)) throw new Error(`typescript.${field} must contain nonempty strings`);
+  if (c.checks.typescriptTypes && !c.typescript.projects.length) throw new Error('Type checking requires at least one TypeScript project');
+}
+
+function validatePythonTools(c) {
+  for (const field of ['executable', 'ruffExecutable']) if (typeof c.python[field] !== 'string' || !c.python[field]) throw new Error(`python.${field} is required`);
+  if (!Array.isArray(c.python.ruffSelect) || !c.python.ruffSelect.length || c.python.ruffSelect.some(r => typeof r !== 'string')) throw new Error('python.ruffSelect must be a nonempty rule list');
+}
+
+function validateDeadCode(c) {
+  if (c.deadCode !== undefined) {
+    if (!c.deadCode || typeof c.deadCode !== 'object' || Object.keys(c.deadCode).some(k => !['entryPoints', 'protected'].includes(k))) throw new Error('Invalid deadCode configuration');
+    for (const field of ['entryPoints', 'protected']) if (!Array.isArray(c.deadCode[field]) || c.deadCode[field].some(p => typeof p !== 'string' || !p)) throw new Error(`deadCode.${field} must contain glob patterns`);
+  }
+}
+
+function detectTypescriptProjects(root, files) {
+  const configs = files.filter(f => /(^|\/)tsconfig\.json$/.test(f));
+  for (let i = 0; i < configs.length; i++) {
+    const absolute = path.resolve(root, configs[i]);
+    const parsed = ts.readConfigFile(absolute, ts.sys.readFile);
+    for (const reference of parsed.config?.references ?? []) {
+      const target = path.resolve(path.dirname(absolute), reference.path);
+      const filename = target.endsWith('.json') ? target : path.join(target, 'tsconfig.json');
+      const relative = path.relative(root, filename).replaceAll('\\', '/');
+      if (!relative.startsWith('../') && files.includes(relative) && !configs.includes(relative)) configs.push(relative);
+    }
+  }
+  const activeConfigs = configs.filter(project => {
+    const absolute = path.resolve(root, project);
+    const read = ts.readConfigFile(absolute, ts.sys.readFile);
+    if (read.error) return true;
+    const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(absolute), undefined, absolute);
+    return parsed.fileNames.length > 0 || Boolean(parsed.projectReferences?.length) || parsed.errors.some(e => e.code !== 18003);
+  });
+  return activeConfigs;
 }

@@ -6,6 +6,7 @@ import pathlib
 import re
 import sys
 import tokenize
+from typing import cast
 
 Metric = dict[str, str | int | None]
 Function = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
@@ -109,6 +110,20 @@ def suppressions(text: str) -> list[dict[str, int]]:
     return result
 
 
+def unreachable_statements(statements: list[ast.stmt]) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    terminated = False
+    for statement in statements:
+        if terminated:
+            result.append({'rule': 'dead-code/unreachable-statement', 'line': statement.lineno,
+                           'column': statement.col_offset + 1, 'severity': 'error',
+                           'message': 'Statement follows an unconditional control-flow exit in the same block',
+                           'guidance': 'Remove the unreachable statement or correct the preceding control flow. Preserve cleanup and intended behavior.',
+                           'evidence': {'confidence': 'syntax-proven'}})
+        terminated = terminated or isinstance(statement, (ast.Return, ast.Raise, ast.Break, ast.Continue))
+    return result
+
+
 def code_health(tree: ast.Module) -> list[dict[str, object]]:
     result: list[dict[str, object]] = []
     bodies: dict[str, int] = {}
@@ -117,15 +132,8 @@ def code_health(tree: ast.Module) -> list[dict[str, object]]:
             statements = getattr(node, field, [])
             if not isinstance(statements, list):
                 continue
-            terminated = False
-            for statement in statements:
-                if terminated:
-                    result.append({'rule': 'dead-code/unreachable-statement', 'line': statement.lineno,
-                                   'column': statement.col_offset + 1, 'severity': 'error',
-                                   'message': 'Statement follows an unconditional control-flow exit in the same block',
-                                   'guidance': 'Remove the unreachable statement or correct the preceding control flow. Preserve cleanup and intended behavior.',
-                                   'evidence': {'confidence': 'syntax-proven'}})
-                terminated = terminated or isinstance(statement, (ast.Return, ast.Raise, ast.Break, ast.Continue))
+            # Python AST body/orelse/finalbody lists contain statements by schema.
+            result.extend(unreachable_statements(cast(list[ast.stmt], statements)))
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             body = ast.Module(body=node.body, type_ignores=[])
             count = sum(1 for _ in ast.walk(body))

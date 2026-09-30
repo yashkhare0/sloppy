@@ -241,7 +241,7 @@ test('dependency evidence resolves aliases relative to each nested tsconfig', t 
 });
 
 test('incomplete lint coverage remains failed while preserving compiler diagnostics', async t => {
-  const { root, config, save } = fixture(t, {
+  const { root, save } = fixture(t, {
     'tsconfig.json': '{"compilerOptions":{"strict":true,"noUncheckedIndexedAccess":true,"exactOptionalPropertyTypes":true},"include":["src"]}',
     'src/value.ts': 'export const value: number = "wrong";',
     'scripts/outside.ts': 'export const outside = 1;',
@@ -254,7 +254,7 @@ test('incomplete lint coverage remains failed while preserving compiler diagnost
 });
 
 test('lint compiler prerequisites are configuration failures with valid file-level locations', async t => {
-  const { root, config, save } = fixture(t, {
+  const { root, save } = fixture(t, {
     'tsconfig.json': '{"compilerOptions":{"strict":false},"include":["src"]}',
     'src/value.ts': 'export const value = 1;',
   });
