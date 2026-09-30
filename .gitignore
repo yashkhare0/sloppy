@@ -1,0 +1,9 @@
+node_modules/
+.sloppy/
+.sloppy-pyright-*/
+__pycache__/
+*.pyc
+.ruff_cache/
+.code-quality/
+.code-quality.json
+hooks/

@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "root": "/example/project",
+  "project": {
+    "typescript": true,
+    "python": false,
+    "react": true,
+    "next": true,
+    "shadcn": false
+  },
+  "configFile": ".sloppy.json",
+  "complete": true,
+  "passed": false,
+  "summary": {
+    "files": 2,
+    "errors": 4,
+    "warnings": 0,
+    "baseline": 0
+  },
+  "checks": [
+    {
+      "name": "typescript-structure",
+      "status": "completed",
+      "findings": 0
+    },
+    {
+      "name": "python-structure",
+      "status": "skipped",
+      "detail": "No applicable files"
+    },
+    {
+      "name": "typescript-lint",
+      "status": "completed",
+      "findings": 4
+    },
+    {
+      "name": "typescript-types",
+      "status": "completed",
+      "findings": 0
+    },
+    {
+      "name": "python-lint",
+      "status": "skipped",
+      "detail": "Disabled in configuration"
+    },
+    {
+      "name": "python-types",
+      "status": "skipped",
+      "detail": "Disabled in configuration"
+    }
+  ],
+  "findings": [
+    {
+      "ruleId": "eslint/@typescript-eslint/no-explicit-any",
+      "severity": "error",
+      "file": "src/unsafe.ts",
+      "line": 1,
+      "column": 31,
+      "symbol": null,
+      "message": "Unexpected any. Specify a different type.",
+      "evidence": {
+        "endLine": 1,
+        "endColumn": 34
+      },
+      "guidance": "Correct the violation of @typescript-eslint/no-explicit-any. Consult the rule documentation; preserve the public behavior.",
+      "autoFix": false,
+      "fingerprint": "7f512199ad31a6cedefa7c9fd2eaaa7325164a8fd47b255d04e6beb5cf7aba93"
+    },
+    {
+      "ruleId": "eslint/@typescript-eslint/no-unsafe-return",
+      "severity": "error",
+      "file": "src/unsafe.ts",
+      "line": 1,
+      "column": 38,
+      "symbol": null,
+      "message": "Unsafe return of a value of type `any`.",
+      "evidence": {
+        "endLine": 1,
+        "endColumn": 58
+      },
+      "guidance": "Correct the violation of @typescript-eslint/no-unsafe-return. Consult the rule documentation; preserve the public behavior.",
+      "autoFix": false,
+      "fingerprint": "f010657c3f5f13d0821880b74785a8a39446f3d44335bb2322e5c9c96272a9a4"
+    },
+    {
+      "ruleId": "eslint/@typescript-eslint/no-unsafe-call",
+      "severity": "error",
+      "file": "src/unsafe.ts",
+      "line": 1,
+      "column": 45,
+      "symbol": null,
+      "message": "Unsafe call of an `any` typed value.",
+      "evidence": {
+        "endLine": 1,
+        "endColumn": 55
+      },
+      "guidance": "Correct the violation of @typescript-eslint/no-unsafe-call. Consult the rule documentation; preserve the public behavior.",
+      "autoFix": false,
+      "fingerprint": "682e2a8583f4bd188078c4ea7b4c6dadd7d855a8c07487be21eda07c68ec830d"
+    },
+    {
+      "ruleId": "eslint/@typescript-eslint/no-unsafe-member-access",
+      "severity": "error",
+      "file": "src/unsafe.ts",
+      "line": 1,
+      "column": 51,
+      "symbol": null,
+      "message": "Unsafe member access .nope on an `any` value.",
+      "evidence": {
+        "endLine": 1,
+        "endColumn": 55
+      },
+      "guidance": "Correct the violation of @typescript-eslint/no-unsafe-member-access. Consult the rule documentation; preserve the public behavior.",
+      "autoFix": false,
+      "fingerprint": "b84d13326cc3caa941709789419d322102be31c436b06431996c86312e4506a4"
+    }
+  ],
+  "staleBaseline": [],
+  "reviewOnly": [
+    "Whether abstractions earn their complexity and canonical helpers are reused.",
+    "Whether local, URL, server, and global state have the appropriate ownership.",
+    "Whether updates need transactional atomicity or async work can safely run in parallel.",
+    "Runtime validation, behavioral correctness, and accessibility beyond static lint coverage."
+  ]
+}
