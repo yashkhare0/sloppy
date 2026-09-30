@@ -1,6 +1,6 @@
 import ts from 'typescript';
-import { finding } from './findings.js';
-import { matches } from './config.js';
+import { finding } from "../../domain/findings.js";
+import { matches } from "../../project/policies.js";
 
 // Token identity preserves literal values and operators while ignoring formatting.
 function tokens(node, source) {

@@ -1,16 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { run } from './process.js';
-import { CONFIG, defaults } from './config.js';
-import { check } from './check.js';
+import { run } from "../runtime/processes.js";
+import { CONFIG, defaults } from "../project/policies.js";
+import { check } from "../assessment/assess-project.js";
 
 export function installDefaultHook() {
-  const directory = fileURLToPath(new URL('../hooks', import.meta.url));
+  const directory = fileURLToPath(new URL('../../hooks', import.meta.url));
   const existing = run('git', ['config', '--global', '--get', 'core.hooksPath'], process.cwd());
   if (existing.status !== 1 && existing.status !== 0) throw new Error(existing.stderr || 'Cannot read Git hook configuration');
   if (existing.status === 0 && path.resolve(existing.stdout.trim()) !== path.resolve(directory)) throw new Error(`Existing global hooksPath preserved: ${existing.stdout.trim()}`);
-  const runner = fileURLToPath(new URL('./cli.js', import.meta.url));
+  const runner = fileURLToPath(new URL("../cli/main.js", import.meta.url));
   const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
   const content = `#!/bin/sh\n# sloppy default dispatcher\nexec ${quote(process.execPath.replaceAll('\\', '/'))} ${quote(runner.replaceAll('\\', '/'))} hook-run\n`;
   const file = path.join(directory, 'pre-commit');

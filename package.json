@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "bin": { "sloppy": "src/cli.js" },
-  "scripts": { "test": "node --test", "check": "node src/cli.js check" },
+  "bin": { "sloppy": "src/cli/main.js" },
+  "scripts": { "test": "node --test", "check": "node src/cli/main.js check" },
   "engines": { "node": "^22.13.0 || >=24.0.0" },
   "dependencies": {
     "typescript": "^5.9.3",

@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { matches } from './config.js';
-import { versions } from './engines.js';
+import { matches } from "../project/policies.js";
+import { versions } from '../runtime/tool-versions.js';
+import { moduleOwners } from '../domain/module-ownership.js';
 
 export function buildReport(root, config, files, checks, findings) {
   for (const item of findings) item.ownership = item.file.startsWith('../') || /(^|\/)node_modules\//.test(item.file) ? 'dependency' : matches(item.file, config.exclude ?? []) ? 'excluded' : 'project';
@@ -15,6 +16,7 @@ export function buildReport(root, config, files, checks, findings) {
     version: 1, root, project: config.project, configFile: '.sloppy.json', toolVersions: versions,
     complete, passed: complete && errors === 0, summary: { files: files.length, errors, warnings, baseline: findings.filter(f => f.baseline).length },
     checks, findings, staleBaseline,
+    moduleMap: files.map(file => ({ file, owners: config.organization ? moduleOwners(file, config.organization).map(owner => owner.name) : [] })),
     reviewOnly: [
       'JavaScript receives structural analysis and linting, not TypeScript type checking. Passing static checks does not certify production readiness or runtime correctness.',
       'Whether abstractions earn their complexity and canonical helpers are reused.',
@@ -28,6 +30,7 @@ export function buildReport(root, config, files, checks, findings) {
 }
 export function writeReport(report, directory) {
   fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directory, 'module-map.json'), JSON.stringify({ version: 1, modules: report.moduleMap, dependencies: report.dependencyGraph ?? null }, null, 2) + '\n');
   const grouped = new Map();
   for (const finding of report.findings.filter(f => !f.baseline && f.ownership === 'project')) {
     if (!grouped.has(finding.file)) grouped.set(finding.file, []);

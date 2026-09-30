@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { run } from './process.js';
+import { run } from "../runtime/processes.js";
 
 export function installHook(root) {
   const result = run('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], root);

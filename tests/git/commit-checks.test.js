@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { run } from '../src/process.js';
-import { defaults, discover, CONFIG } from '../src/config.js';
-import { runDefaultHook, installDefaultHook } from '../src/default-hook.js';
+import { run } from "../../src/runtime/processes.js";
+import { defaults, discover, CONFIG } from "../../src/project/policies.js";
+import { runDefaultHook, installDefaultHook } from "../../src/git/commit-checks.js";
 
 test('Git discovery respects nested ignores, negation, tracked files and active subtree', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quality-ignore-'));

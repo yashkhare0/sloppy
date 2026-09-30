@@ -89,14 +89,17 @@
   "boundaries": [
     {
       "from": [
-        "src/shared/**",
-        "src/lib/**"
+        "src/domain/**"
       ],
       "disallow": [
-        "src/features/**",
-        "src/app/**"
+        "src/analysis/**",
+        "src/assessment/**",
+        "src/cli/**",
+        "src/git/**",
+        "src/project/**",
+        "src/runtime/**"
       ],
-      "reason": "Shared modules must not depend on application features."
+      "reason": "Domain invariants must not depend on orchestration, project policy or runtime adapters."
     }
   ],
   "checks": {
@@ -140,5 +143,89 @@
   "deadCode": {
     "entryPoints": [],
     "protected": []
+  },
+  "organization": {
+    "sourceRoots": [
+      "src"
+    ],
+    "forbiddenNames": [
+      "helpers",
+      "utils",
+      "common",
+      "misc",
+      "types"
+    ],
+    "compositionRoots": [
+      "src/cli/**"
+    ],
+    "rootFileWarning": 8,
+    "requireOwnership": true,
+    "requireOwnerTests": false,
+    "exemptions": [],
+    "owners": [
+      {
+        "name": "analysis-javascript",
+        "sources": [
+          "src/analysis/javascript/**"
+        ],
+        "tests": [
+          "tests/analysis/javascript/**"
+        ]
+      },
+      {
+        "name": "analysis-python",
+        "sources": [
+          "src/analysis/python/**"
+        ],
+        "tests": [
+          "tests/analysis/python/**"
+        ]
+      },
+      {
+        "name": "assessment",
+        "sources": [
+          "src/assessment/**"
+        ],
+        "tests": [
+          "tests/assessment/**"
+        ]
+      },
+      {
+        "name": "domain",
+        "sources": [
+          "src/domain/**"
+        ],
+        "tests": [
+          "tests/domain/**"
+        ]
+      },
+      {
+        "name": "project",
+        "sources": [
+          "src/project/**"
+        ],
+        "tests": [
+          "tests/project/**"
+        ]
+      },
+      {
+        "name": "runtime",
+        "sources": [
+          "src/runtime/**"
+        ],
+        "tests": [
+          "tests/runtime/**"
+        ]
+      },
+      {
+        "name": "git",
+        "sources": [
+          "src/git/**"
+        ],
+        "tests": [
+          "tests/git/**"
+        ]
+      }
+    ]
   }
 }

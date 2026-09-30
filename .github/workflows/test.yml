@@ -15,4 +15,4 @@ jobs:
       - run: python -m pip install ruff==0.16.9
       - run: npm ci
       - run: npm test
-      - run: node src/cli.js check
+      - run: node src/cli/main.js check

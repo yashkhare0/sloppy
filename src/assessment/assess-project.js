@@ -1,8 +1,12 @@
-import { discover, load, matches } from './config.js';
-import { analyzeTypescript } from './typescript.js';
-import { analyzePython } from './python.js';
-import { isolatedTypescript, lintJavascript, pythonLint, pythonTypes } from './engines.js';
-import { buildReport, writeReport } from './report.js';
+import { discover, load, matches } from "../project/policies.js";
+import { analyzeTypescript } from "../analysis/javascript/source-files.js";
+import { analyzePython } from "../analysis/python/source-files.js";
+import { isolatedTypescript } from '../analysis/javascript/project-workers.js';
+import { lintJavascript } from '../analysis/javascript/lint-source.js';
+import { pythonLint } from '../analysis/python/lint-source.js';
+import { pythonTypes } from '../analysis/python/type-checking.js';
+import { buildReport, writeReport } from "./reports.js";
+import { assessOrganization } from '../project/organization.js';
 
 export async function check(root, output, configPath) {
   let config;
@@ -39,6 +43,7 @@ export async function check(root, output, configPath) {
       checks.push({ name, status: parseFailures.length ? 'failed' : 'completed', findings: issues.length, ...(parseFailures.length ? { detail: `${parseFailures.length} lint parsing, project coverage or compiler-option prerequisites failed.` } : {}) });
     } catch (error) { if (error.findings) findings.push(...error.findings); checks.push({ name, status: 'failed', detail: error.message }); }
   }
+  await engine('organization', Boolean(config.organization), files.length > 0, () => assessOrganization(files, config));
   await engine('typescript-structure', true, scriptFiles.length > 0, () => analyzeTypescript(root, scriptFiles, config, dependencyGraph));
   await engine('python-structure', true, py.length > 0, () => analyzePython(root, py, config));
   await engine('javascript-lint', config.checks.javascriptLint !== false, js.length > 0, () => lintJavascript(root, js, config));

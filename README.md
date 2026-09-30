@@ -160,3 +160,15 @@ Each assessment also emits `repair-plan.json` with file-grouped findings, source
 
 Monorepo initialization discovers referenced TypeScript configs and nested React/Next manifests. Validate the generated config for mixed-framework repositories. Missing dependencies, uncovered files and parser failures require resolution before an assessment can pass. Strict-policy violations do not by themselves prove runtime defects.
 TypeScript engines now partition selected sources by their closest configured project, run each group in an isolated subprocess with a 120-second timeout, and preserve results if another group fails. Compiler programs use the selected project roots and configured declaration files; imported dependencies are still checked according to that project's compiler options. Overlapping diagnostics are deduplicated by fingerprint and source location. Out-of-scope diagnostics remain visible and are excluded from agent repair tasks. File-level lint prerequisite failures make the assessment incomplete.
+
+## Organization and code navigation
+
+Organization follows resource and behavior ownership, inspired by [Bureau's source guidance](https://github.com/yashkhare0/can-ban/blob/main/src/AGENTS.md). Sloppy separates `cli`, `assessment`, `project`, `domain`, language-specific `analysis`, `runtime`, and `git`. The shared domain owns findings, ownership matching, and import-cycle invariants. Python parsing lives in `analysis/python/parse_source.py`.
+
+New configurations include an editable `organization` policy. It rejects configured vague module names, warns about crowded source roots, and optionally requires exactly one owner per source module and a matching test location per owner. Define `owners` with `name`, `sources`, and `tests` glob arrays; enable `requireOwnership` and `requireOwnerTests` when those contracts are established. `compositionRoots` exempts intentional entry points from ownership checks. `exemptions` requires file patterns and a meaningful reason for framework-generated exceptions. Existing configurations without this section remain valid.
+
+Every assessment writes `module-map.json`, mapping selected files to declared owners and including the existing JavaScript/TypeScript dependency evidence. Unresolved imports remain explicit; Python dependency edges are not yet included in this navigation artifact. Test-file presence does not establish coverage, and folder names do not prove cohesion.
+
+Thresholds are inclusive: a complexity policy of `[8, 12]` warns at 8–11 and errors at 12 or above. The same rule applies to all structural metrics. Previously recorded baseline fingerprints may become stale when diagnostic messages change; review them before regenerating.
+
+Production readiness requires additional evidence beyond static analysis: executed behavior and contract tests, deployment/build checks, security review, and measured performance under representative workloads. Static loop patterns cannot establish universal Big-O bounds or whether an algorithm is efficient for its intended workload. These remain explicit review obligations, not a production certification.

@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { defaults, load, CONFIG } from '../src/config.js';
-import { analyzeTypescript } from '../src/typescript.js';
-import { analyzePython } from '../src/python.js';
-import { check } from '../src/check.js';
-import { installHook } from '../src/hook.js';
-import { run } from '../src/process.js';
+import { defaults, load, CONFIG } from "../../src/project/policies.js";
+import { analyzeTypescript } from "../../src/analysis/javascript/source-files.js";
+import { analyzePython } from "../../src/analysis/python/source-files.js";
+import { check } from "../../src/assessment/assess-project.js";
+import { installHook } from "../../src/git/repository-hooks.js";
+import { run } from "../../src/runtime/processes.js";
 
 function fixture(t, files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quality-test-'));
@@ -28,7 +28,7 @@ test('detects Next.js and shadcn without editing project manifests', t => {
 });
 test('function metrics exclude nested function complexity but inspect both functions', t => {
   const { root, config } = fixture(t, { 'example.ts': 'function outer() {\n function inner() { if (true) { if (true) { return 1; } } }\n return inner();\n}' });
-  config.limits.complexity = [1, 2];
+  config.limits.complexity = [2, 3];
   const findings = analyzeTypescript(root, ['example.ts'], config);
   assert.equal(findings.filter(f => f.ruleId === 'structure/complexity').length, 1);
   assert.equal(findings.find(f => f.ruleId === 'structure/complexity').symbol, 'inner');

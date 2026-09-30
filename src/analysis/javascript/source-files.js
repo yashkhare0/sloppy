@@ -1,9 +1,10 @@
+import { cycles } from '../../domain/import-cycles.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
-import { matches, fileLimits, fileNaming } from './config.js';
-import { finding, metric } from './findings.js';
-import { codeHealth, unreachableModules } from './code-health.js';
+import { matches, fileLimits, fileNaming } from "../../project/policies.js";
+import { finding, metric } from "../../domain/findings.js";
+import { codeHealth, unreachableModules } from "./functions.js";
 
 const functionNode = node => ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node) || ts.isConstructorDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node);
 const controls = node => ts.isIfStatement(node) || ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node) || ts.isWhileStatement(node) || ts.isDoStatement(node) || ts.isSwitchStatement(node) || ts.isTryStatement(node);
@@ -73,7 +74,12 @@ export function analyzeTypescript(root, files, config, dependencyGraph) {
   for (const file of files) analyzeFile(file, shared);
   findings.push(...cycles(graph));
   findings.push(...unreachableModules(graph, config));
-  for (const client of clients) {
+  for (const client of clients) inspectClientDependencies(client, shared);
+
+  return findings;
+}
+function inspectClientDependencies(client, shared) {
+  const { servers, runtimeGraph, findings } = shared;
     const visited = new Set();
     const pending = [[client]];
     while (pending.length) {
@@ -83,27 +89,8 @@ export function analyzeTypescript(root, files, config, dependencyGraph) {
       if (servers.has(file)) findings.push(finding('next/client-server-boundary', { file: client, line: 1, column: 1, message: 'Client module reaches a server-only dependency', guidance: 'Move the server operation behind a server-owned boundary and pass serializable data into the client component.', ...{ evidence: { chain } } }));
       for (const target of runtimeGraph.get(file) ?? []) if (runtimeGraph.has(target)) pending.push([...chain, target]);
     }
-  }
+}
 
-  return findings;
-}
-export function cycles(graph) {
-  const state = new Map(), stack = [], findings = [], emitted = new Set();
-  function visit(file) {
-    if (state.get(file) === 2) return;
-    if (state.get(file) === 1) {
-      const cycle = [...stack.slice(stack.indexOf(file)), file];
-      const key = [...new Set(cycle)].sort().join('|');
-      if (!emitted.has(key)) findings.push(finding('architecture/circular-import', { file: file, line: 1, column: 1, message: 'Circular local import dependency', guidance: 'Remove the cycle by placing shared contracts in a module both sides can depend on, or correcting dependency direction.', ...{ evidence: { cycle } } }));
-      emitted.add(key); return;
-    }
-    state.set(file, 1); stack.push(file);
-    for (const target of graph.get(file) ?? []) if (graph.has(target)) visit(target);
-    stack.pop(); state.set(file, 2);
-  }
-  for (const file of [...graph.keys()].sort()) visit(file);
-  return findings;
-}
 
 function inspectJsx(node, context) {
   const { config, source, file, findings } = context;
@@ -186,10 +173,7 @@ function analyzeFile(file, shared) {
       return [...lines].filter(line => line >= start && line <= end).length;
     };
     addMetric('file', lines.size, null, null);
-    const name = path.basename(file).replace(/\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/, '').replace(/\.(?:test|spec|config|server|client)$/, '');
-    if (fileNaming(file, config).files && !/^(?:[a-z][a-z0-9]*(?:-[a-z0-9]+)*|\[\[?\.?\.?\.?[A-Za-z][\w]*\]?\]|\([\w-]+\)|_[a-z]+)$/.test(name)) {
-      findings.push(finding('naming/file', { file: file, line: 1, column: 1, message: `File name '${name}' is not kebab-case`, guidance: 'Use kebab-case unless this is a framework-mandated file; disable file naming using a scoped override only if necessary.' }));
-    }
+    inspectFileName(file, config, findings);
     const imports = [];
     for (const diagnostic of source.parseDiagnostics) {
       const pos = source.getLineAndCharacterOfPosition(diagnostic.start ?? 0);
@@ -216,3 +200,10 @@ function checkImportBoundaries(context, location) {
 }
 
 function serverSpecifier(specifier) { return ['server-only', 'next/headers'].includes(specifier) || specifier.startsWith('node:'); }
+
+function inspectFileName(file, config, findings) {
+    const name = path.basename(file).replace(/\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/, '').replace(/\.(?:test|spec|config|server|client)$/, '');
+    if (fileNaming(file, config).files && !/^(?:[a-z][a-z0-9]*(?:-[a-z0-9]+)*|\[\[?\.?\.?\.?[A-Za-z][\w]*\]?\]|\([\w-]+\)|_[a-z]+)$/.test(name)) {
+      findings.push(finding('naming/file', { file: file, line: 1, column: 1, message: `File name '${name}' is not kebab-case`, guidance: 'Use kebab-case unless this is a framework-mandated file; disable file naming using a scoped override only if necessary.' }));
+    }
+}

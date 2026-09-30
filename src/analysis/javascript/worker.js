@@ -1,5 +1,6 @@
 import fs from 'node:fs';
-import { lintTypescript, typescriptTypes } from './engines.js';
+import { lintTypescript } from './lint-source.js';
+import { typescriptTypes } from './type-checking.js';
 
 try {
   const { engine, root, files, config } = JSON.parse(fs.readFileSync(0, 'utf8'));

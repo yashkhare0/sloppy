@@ -2,10 +2,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { CONFIG, defaults, load } from './config.js';
-import { check } from './check.js';
-import { installHook } from './hook.js';
-import { installDefaultHook, runDefaultHook } from './default-hook.js';
+import { CONFIG, defaults, load } from "../project/policies.js";
+import { check } from "../assessment/assess-project.js";
+import { installHook } from "../git/repository-hooks.js";
+import { installDefaultHook, runDefaultHook } from "../git/commit-checks.js";
 
 async function main() {
   const { positionals, values } = parseArgs({ allowPositionals: true, options: {
@@ -56,8 +56,8 @@ async function assess(root, output, values, command) {
     }
 }
 async function doctor(root) {
-    const { run } = await import('./process.js');
-    const { versions } = await import('./engines.js');
+    const { run } = await import("../runtime/processes.js");
+    const { versions } = await import('../runtime/tool-versions.js');
     console.log(JSON.stringify(versions));
     for (const [name, args] of [['python', ['--version']], ['ruff', ['--version']], ['git', ['--version']]]) {
       try { const r = run(name, args, root); if (r.status !== 0) throw new Error(r.stderr); console.log((r.stdout || r.stderr).trim()); }

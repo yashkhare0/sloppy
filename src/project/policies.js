@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { minimatch } from 'minimatch';
-import { run } from './process.js';
+import { run } from "../runtime/processes.js";
+import { organizationDefaults, validateOrganization } from './organization.js';
 
 export const CONFIG = '.sloppy.json';
 const limits = {
@@ -51,11 +52,12 @@ export function defaults(root) {
     python: { executable: 'python', ruffExecutable: 'ruff', ruffSelect: ['E4', 'E7', 'E9', 'F', 'B', 'I', 'N', 'ASYNC', 'ANN', 'BLE', 'PGH', 'RUF'], typeCheckingMode: 'strict' },
     baseline: null,
     deadCode: { entryPoints: [], protected: [] },
+    organization: organizationDefaults(),
   });
 }
 export function load(root, configPath = path.join(root, CONFIG)) {
   const c = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  const allowed = ['version', 'project', 'include', 'exclude', 'limits', 'overrides', 'naming', 'boundaries', 'checks', 'typescript', 'python', 'baseline', 'deadCode'];
+  const allowed = ['version', 'project', 'include', 'exclude', 'limits', 'overrides', 'naming', 'boundaries', 'checks', 'typescript', 'python', 'baseline', 'deadCode', 'organization'];
   for (const k of Object.keys(c)) if (!allowed.includes(k)) throw new Error(`Unknown configuration key: ${k}`);
   if (c.version !== 1) throw new Error('Unsupported configuration version');
   validateSourcePatterns(c);
@@ -71,6 +73,7 @@ export function load(root, configPath = path.join(root, CONFIG)) {
   validateEngineKeys(c);
   if (c.baseline !== null && typeof c.baseline !== 'string') throw new Error('baseline must be null or a file path');
   validateDeadCode(c);
+  validateOrganization(c.organization);
   return c;
 }
 function validateSourcePatterns(c) {

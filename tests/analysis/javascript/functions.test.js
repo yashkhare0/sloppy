@@ -4,13 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import ts from 'typescript';
-import { codeHealth, unreachableModules } from '../src/code-health.js';
-import { defaults, load, CONFIG } from '../src/config.js';
-import { lintTypescript, pythonLint } from '../src/engines.js';
-import { analyzePython } from '../src/python.js';
-import { analyzeTypescript } from '../src/typescript.js';
-import { buildReport, writeReport } from '../src/report.js';
-import { check } from '../src/check.js';
+import { codeHealth, unreachableModules } from "../../../src/analysis/javascript/functions.js";
+import { defaults, load, CONFIG } from "../../../src/project/policies.js";
+import { lintTypescript } from '../../../src/analysis/javascript/lint-source.js';
+import { pythonLint } from '../../../src/analysis/python/lint-source.js';
+import { analyzePython } from "../../../src/analysis/python/source-files.js";
+import { analyzeTypescript } from "../../../src/analysis/javascript/source-files.js";
+import { buildReport, writeReport } from "../../../src/assessment/reports.js";
+import { check } from "../../../src/assessment/assess-project.js";
 
 function fixture(t, files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'code-health-'));
