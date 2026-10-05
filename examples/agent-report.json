@@ -3,20 +3,114 @@
   "root": "/example/project",
   "project": {
     "typescript": true,
-    "python": false,
+    "python": true,
     "react": true,
     "next": true,
-    "shadcn": false
+    "shadcn": false,
+    "javascript": false
   },
   "configFile": ".sloppy.json",
+  "toolVersions": {
+    "cli": "1.0.0",
+    "node": "v24.19.0",
+    "typescript": "5.9.3",
+    "eslint": "10.11.0",
+    "pyright": "1.1.414"
+  },
+  "revision": null,
   "complete": true,
   "passed": false,
+  "repositoryChecks": "not-run",
   "summary": {
-    "files": 2,
-    "errors": 4,
+    "files": 3,
+    "errors": 5,
     "warnings": 0,
-    "baseline": 0
+    "gateErrors": 4,
+    "reviewLeads": 1,
+    "levels": {
+      "info": 0,
+      "minor": 0,
+      "major": 5,
+      "critical": 0
+    },
+    "levelConfidence": {
+      "info": {
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "minor": {
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "major": {
+        "high": 5,
+        "medium": 0,
+        "low": 0
+      },
+      "critical": {
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      }
+    },
+    "groups": {
+      "diagnostic": {
+        "total": 4,
+        "gateErrors": 4,
+        "errors": 4,
+        "warnings": 0
+      },
+      "policy": {
+        "total": 0,
+        "gateErrors": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "review": {
+        "total": 1,
+        "gateErrors": 0,
+        "errors": 1,
+        "warnings": 0
+      },
+      "dependency": {
+        "total": 0,
+        "gateErrors": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "outsideScope": {
+        "total": 0,
+        "gateErrors": 0,
+        "errors": 0,
+        "warnings": 0
+      }
+    },
+    "baseline": 0,
+    "baselineConfigured": false
   },
+  "hotspots": [
+    {
+      "file": "src/unsafe.ts",
+      "rules": [
+        "eslint/@typescript-eslint/no-explicit-any",
+        "eslint/@typescript-eslint/no-unsafe-call",
+        "eslint/@typescript-eslint/no-unsafe-member-access",
+        "eslint/@typescript-eslint/no-unsafe-return"
+      ],
+      "findings": 4,
+      "gateErrors": 4
+    },
+    {
+      "file": "src/loops.py",
+      "rules": [
+        "python/nested-loop"
+      ],
+      "findings": 1,
+      "gateErrors": 0
+    }
+  ],
   "checks": [
     {
       "name": "typescript-structure",
@@ -25,8 +119,8 @@
     },
     {
       "name": "python-structure",
-      "status": "skipped",
-      "detail": "No applicable files"
+      "status": "completed",
+      "findings": 1
     },
     {
       "name": "typescript-lint",
@@ -47,79 +141,157 @@
       "name": "python-types",
       "status": "skipped",
       "detail": "Disabled in configuration"
+    },
+    {
+      "name": "python-unused-code",
+      "status": "skipped",
+      "detail": "Disabled in configuration"
+    },
+    {
+      "name": "python-coverage",
+      "status": "skipped",
+      "detail": "Disabled in configuration"
+    },
+    {
+      "name": "python-dependency-audit",
+      "status": "skipped",
+      "detail": "Disabled in configuration"
+    },
+    {
+      "name": "javascript-lint",
+      "status": "skipped",
+      "detail": "No applicable files"
     }
   ],
   "findings": [
     {
-      "ruleId": "eslint/@typescript-eslint/no-explicit-any",
+      "ruleId": "python/nested-loop",
+      "symbol": "aggregate",
+      "evidence": {
+        "confidence": "syntax-proven",
+        "function": "aggregate"
+      },
+      "autoFix": false,
+      "file": "src/loops.py",
+      "line": 8,
+      "column": 5,
+      "message": "Nested loop in aggregate()",
+      "guidance": "Check input sizes and repeated lookups. Keep the loop if the work is bounded and clear.",
       "severity": "error",
-      "file": "src/unsafe.ts",
-      "line": 1,
-      "column": 31,
+      "level": "major",
+      "kind": "review",
+      "confidence": "high",
+      "blocksGate": false,
+      "fingerprint": "cd8dfb0c52f41c298b6cfdeba793f6d37d2b3a8095758d713caf7883863afeba",
+      "ownership": "project"
+    },
+    {
+      "ruleId": "eslint/@typescript-eslint/no-explicit-any",
       "symbol": null,
-      "message": "Unexpected any. Specify a different type.",
       "evidence": {
         "endLine": 1,
         "endColumn": 34
       },
-      "guidance": "Correct the violation of @typescript-eslint/no-explicit-any. Consult the rule documentation; preserve the public behavior.",
       "autoFix": false,
-      "fingerprint": "7f512199ad31a6cedefa7c9fd2eaaa7325164a8fd47b255d04e6beb5cf7aba93"
+      "file": "src/unsafe.ts",
+      "line": 1,
+      "column": 31,
+      "message": "Unexpected any. Specify a different type.",
+      "guidance": "Correct the violation of @typescript-eslint/no-explicit-any. Consult the rule documentation; preserve the public behavior.",
+      "severity": "error",
+      "level": "major",
+      "kind": "diagnostic",
+      "confidence": "high",
+      "blocksGate": true,
+      "fingerprint": "7f512199ad31a6cedefa7c9fd2eaaa7325164a8fd47b255d04e6beb5cf7aba93",
+      "ownership": "project"
     },
     {
       "ruleId": "eslint/@typescript-eslint/no-unsafe-return",
-      "severity": "error",
-      "file": "src/unsafe.ts",
-      "line": 1,
-      "column": 38,
       "symbol": null,
-      "message": "Unsafe return of a value of type `any`.",
       "evidence": {
         "endLine": 1,
         "endColumn": 58
       },
-      "guidance": "Correct the violation of @typescript-eslint/no-unsafe-return. Consult the rule documentation; preserve the public behavior.",
       "autoFix": false,
-      "fingerprint": "f010657c3f5f13d0821880b74785a8a39446f3d44335bb2322e5c9c96272a9a4"
+      "file": "src/unsafe.ts",
+      "line": 1,
+      "column": 38,
+      "message": "Unsafe return of a value of type `any`.",
+      "guidance": "Correct the violation of @typescript-eslint/no-unsafe-return. Consult the rule documentation; preserve the public behavior.",
+      "severity": "error",
+      "level": "major",
+      "kind": "diagnostic",
+      "confidence": "high",
+      "blocksGate": true,
+      "fingerprint": "f010657c3f5f13d0821880b74785a8a39446f3d44335bb2322e5c9c96272a9a4",
+      "ownership": "project"
     },
     {
       "ruleId": "eslint/@typescript-eslint/no-unsafe-call",
-      "severity": "error",
+      "symbol": null,
+      "evidence": {
+        "endLine": 1,
+        "endColumn": 55
+      },
+      "autoFix": false,
       "file": "src/unsafe.ts",
       "line": 1,
       "column": 45,
-      "symbol": null,
       "message": "Unsafe call of an `any` typed value.",
-      "evidence": {
-        "endLine": 1,
-        "endColumn": 55
-      },
       "guidance": "Correct the violation of @typescript-eslint/no-unsafe-call. Consult the rule documentation; preserve the public behavior.",
-      "autoFix": false,
-      "fingerprint": "682e2a8583f4bd188078c4ea7b4c6dadd7d855a8c07487be21eda07c68ec830d"
+      "severity": "error",
+      "level": "major",
+      "kind": "diagnostic",
+      "confidence": "high",
+      "blocksGate": true,
+      "fingerprint": "682e2a8583f4bd188078c4ea7b4c6dadd7d855a8c07487be21eda07c68ec830d",
+      "ownership": "project"
     },
     {
       "ruleId": "eslint/@typescript-eslint/no-unsafe-member-access",
-      "severity": "error",
-      "file": "src/unsafe.ts",
-      "line": 1,
-      "column": 51,
       "symbol": null,
-      "message": "Unsafe member access .nope on an `any` value.",
       "evidence": {
         "endLine": 1,
         "endColumn": 55
       },
-      "guidance": "Correct the violation of @typescript-eslint/no-unsafe-member-access. Consult the rule documentation; preserve the public behavior.",
       "autoFix": false,
-      "fingerprint": "b84d13326cc3caa941709789419d322102be31c436b06431996c86312e4506a4"
+      "file": "src/unsafe.ts",
+      "line": 1,
+      "column": 51,
+      "message": "Unsafe member access .nope on an `any` value.",
+      "guidance": "Correct the violation of @typescript-eslint/no-unsafe-member-access. Consult the rule documentation; preserve the public behavior.",
+      "severity": "error",
+      "level": "major",
+      "kind": "diagnostic",
+      "confidence": "high",
+      "blocksGate": true,
+      "fingerprint": "b84d13326cc3caa941709789419d322102be31c436b06431996c86312e4506a4",
+      "ownership": "project"
     }
   ],
   "staleBaseline": [],
+  "moduleMap": [
+    {
+      "file": "src/safe.ts",
+      "owners": []
+    },
+    {
+      "file": "src/unsafe.ts",
+      "owners": []
+    },
+    {
+      "file": "src/loops.py",
+      "owners": []
+    }
+  ],
   "reviewOnly": [
-    "Whether abstractions earn their complexity and canonical helpers are reused.",
+    "JavaScript receives structural analysis and linting, not TypeScript type checking. Passing static checks does not certify production readiness or runtime correctness.",
+    "Whether files within each owner have cohesive responsibilities, clear names, and abstractions that earn their cost.",
     "Whether local, URL, server, and global state have the appropriate ownership.",
     "Whether updates need transactional atomicity or async work can safely run in parallel.",
-    "Runtime validation, behavioral correctness, and accessibility beyond static lint coverage."
+    "Runtime validation, behavioral correctness, and accessibility beyond static lint coverage.",
+    "Vulture unused-definition findings can miss dynamic entry points or public APIs consumed outside the repository. TypeScript module reachability requires explicit entryPoints; framework discovery and external consumers require review.",
+    "Change risk is indicated by complexity, nesting, size, and import cycles; static checks cannot establish that code is untouchable or identify AI authorship."
   ]
 }

@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { defaults, load, CONFIG } from "../../src/project/policies.js";
 import { analyzeTypescript } from "../../src/analysis/javascript/source-files.js";
-import { analyzePython } from "../../src/analysis/python/source-files.js";
+import { analyzePython } from "../../src/analysis/python/source.js";
 import { check } from "../../src/assessment/assess-project.js";
 import { installHook } from "../../src/git/repository-hooks.js";
 import { run } from "../../src/runtime/processes.js";

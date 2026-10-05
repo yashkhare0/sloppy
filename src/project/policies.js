@@ -4,6 +4,9 @@ import ts from 'typescript';
 import { minimatch } from 'minimatch';
 import { run } from "../runtime/processes.js";
 import { organizationDefaults, validateOrganization } from './organization.js';
+import {
+  normalizePythonChecks, pythonConfigurationKeys, pythonDefaults, validatePythonTools,
+} from './python-policies.js';
 
 export const CONFIG = '.sloppy.json';
 const limits = {
@@ -47,9 +50,14 @@ export function defaults(root) {
     boundaries: [
       { from: ['src/shared/**', 'src/lib/**'], disallow: ['src/features/**', 'src/app/**'], reason: 'Shared modules must not depend on application features.' },
     ],
-    checks: { javascriptLint: project.javascript, typescriptLint: project.typescript, typescriptTypes: project.typescript, pythonLint: project.python, pythonTypes: project.python },
+    checks: {
+      javascriptLint: project.javascript, typescriptLint: project.typescript,
+      typescriptTypes: project.typescript, pythonLint: project.python,
+      pythonTypes: project.python, pythonUnusedCode: project.python,
+      pythonCoverage: false, pythonDependencyAudit: false,
+    },
     typescript: { projects: activeConfigs.length ? activeConfigs : ['tsconfig.json'], requiredOptions: ['strict', 'noUncheckedIndexedAccess', 'exactOptionalPropertyTypes'], eslintRules: {} },
-    python: { executable: 'python', ruffExecutable: 'ruff', ruffSelect: ['E4', 'E7', 'E9', 'F', 'B', 'I', 'N', 'ASYNC', 'ANN', 'BLE', 'PGH', 'RUF'], typeCheckingMode: 'strict' },
+    python: pythonDefaults(),
     baseline: null,
     deadCode: { entryPoints: [], protected: [] },
     organization: organizationDefaults(),
@@ -57,9 +65,21 @@ export function defaults(root) {
 }
 export function load(root, configPath = path.join(root, CONFIG)) {
   const c = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  validateConfigurationShape(c);
+  normalizePythonChecks(c);
+  validateConfiguration(c, root);
+  return c;
+}
+
+function validateConfigurationShape(c) {
   const allowed = ['version', 'project', 'include', 'exclude', 'limits', 'overrides', 'naming', 'boundaries', 'checks', 'typescript', 'python', 'baseline', 'deadCode', 'organization'];
   for (const k of Object.keys(c)) if (!allowed.includes(k)) throw new Error(`Unknown configuration key: ${k}`);
   if (c.version !== 1) throw new Error('Unsupported configuration version');
+  if (!c.python || typeof c.python !== 'object' || Array.isArray(c.python)) throw new Error('Invalid Python configuration');
+  if (!c.checks || typeof c.checks !== 'object' || Array.isArray(c.checks)) throw new Error('Invalid checks configuration');
+}
+
+function validateConfiguration(c, root) {
   validateSourcePatterns(c);
   validateLimits(c.limits);
   if (!Array.isArray(c.overrides) || !Array.isArray(c.boundaries)) throw new Error('overrides and boundaries must be arrays');
@@ -67,21 +87,21 @@ export function load(root, configPath = path.join(root, CONFIG)) {
   validateBoundaries(c);
   validatePolicyFlags(c);
   validateTypescriptShape(c);
-  if (!c.python || !['off', 'basic', 'standard', 'strict'].includes(c.python.typeCheckingMode)) throw new Error('Invalid Python type checking mode');
+  if (!['off', 'basic', 'standard', 'strict'].includes(c.python.typeCheckingMode)) throw new Error('Invalid Python type checking mode');
   validateTypescriptProjects(c);
-  validatePythonTools(c);
+  validatePythonTools(c, root);
   validateEngineKeys(c);
   if (c.baseline !== null && typeof c.baseline !== 'string') throw new Error('baseline must be null or a file path');
   validateDeadCode(c);
   validateOrganization(c.organization);
-  return c;
 }
+
 function validateSourcePatterns(c) {
   for (const k of ['include', 'exclude']) if (!Array.isArray(c[k]) || c[k].some(v => typeof v !== 'string')) throw new Error(`${k} must be a list of glob patterns`);
   if (!c.include.length) throw new Error('include cannot be empty');
 }
 function validateEngineKeys(c) {
-  const keys = { typescript: ['projects', 'requiredOptions', 'eslintRules'], python: ['executable', 'ruffExecutable', 'ruffSelect', 'typeCheckingMode'] };
+  const keys = { typescript: ['projects', 'requiredOptions', 'eslintRules'], python: pythonConfigurationKeys };
   for (const [key, allowed] of Object.entries(keys)) for (const name of Object.keys(c[key])) if (!allowed.includes(name)) throw new Error(`Unknown ${key} key: ${name}`);
 }
 function validateFlags(value, keys, label, partial = false) {
@@ -141,10 +161,10 @@ function validateBoundaries(c) {
 }
 
 function validatePolicyFlags(c) {
-  for (const k of ['typescriptLint', 'typescriptTypes', 'pythonLint', 'pythonTypes']) if (typeof c.checks?.[k] !== 'boolean') throw new Error(`checks.${k} must be boolean`);
+  for (const k of ['typescriptLint', 'typescriptTypes', 'pythonLint', 'pythonTypes', 'pythonUnusedCode', 'pythonCoverage', 'pythonDependencyAudit']) if (typeof c.checks?.[k] !== 'boolean') throw new Error(`checks.${k} must be boolean`);
   for (const k of ['files', 'identifiers']) if (typeof c.naming?.[k] !== 'boolean') throw new Error(`naming.${k} must be boolean`);
   validateFlags(c.naming, ['files', 'identifiers'], 'naming');
-  validateFlags(c.checks, ['typescriptLint', 'typescriptTypes', 'pythonLint', 'pythonTypes', 'javascriptLint'], 'checks', true);
+  validateFlags(c.checks, ['typescriptLint', 'typescriptTypes', 'pythonLint', 'pythonTypes', 'javascriptLint', 'pythonUnusedCode', 'pythonCoverage', 'pythonDependencyAudit'], 'checks', true);
   if (c.checks.javascriptLint !== undefined && typeof c.checks.javascriptLint !== 'boolean') throw new Error('checks.javascriptLint must be boolean');
   validateProject(c.project);
 }
@@ -161,11 +181,6 @@ function validateTypescriptShape(c) {
 function validateTypescriptProjects(c) {
   for (const field of ['projects', 'requiredOptions']) if (c.typescript[field].some(p => typeof p !== 'string' || !p)) throw new Error(`typescript.${field} must contain nonempty strings`);
   if (c.checks.typescriptTypes && !c.typescript.projects.length) throw new Error('Type checking requires at least one TypeScript project');
-}
-
-function validatePythonTools(c) {
-  for (const field of ['executable', 'ruffExecutable']) if (typeof c.python[field] !== 'string' || !c.python[field]) throw new Error(`python.${field} is required`);
-  if (!Array.isArray(c.python.ruffSelect) || !c.python.ruffSelect.length || c.python.ruffSelect.some(r => typeof r !== 'string')) throw new Error('python.ruffSelect must be a nonempty rule list');
 }
 
 function validateDeadCode(c) {
