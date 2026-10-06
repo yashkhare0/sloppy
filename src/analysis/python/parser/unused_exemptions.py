@@ -5,6 +5,7 @@ import pathlib
 import sys
 import tokenize
 from functools import cache
+from typing import cast
 
 try:
     import tomllib
@@ -60,12 +61,16 @@ def _script_targets(pyproject: pathlib.Path) -> set[tuple[tuple[str, ...], str]]
     if not pyproject.is_file() or tomllib is None:
         return set()
     try:
-        project = tomllib.loads(pyproject.read_text()).get('project', {})
+        raw_project: object = tomllib.loads(pyproject.read_text()).get('project')
     except (OSError, tomllib.TOMLDecodeError):
         return set()
-    scripts = project.get('scripts', {}) if isinstance(project, dict) else {}
-    if not isinstance(scripts, dict):
+    if not isinstance(raw_project, dict):
         return set()
+    project = cast(dict[str, object], raw_project)
+    raw_scripts = project.get('scripts')
+    if not isinstance(raw_scripts, dict):
+        return set()
+    scripts = cast(dict[str, object], raw_scripts)
     return {target for value in scripts.values() if (target := _script_target(value)) is not None}
 
 

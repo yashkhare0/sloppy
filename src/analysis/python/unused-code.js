@@ -48,16 +48,20 @@ export function unusedPython(root, files, config) {
   }
 }
 
-function parseVultureOutput(root, files, output, config, exemptions) {
-  const known = new Set(files);
+export function parseVultureOutput(root, files, output, config, exemptions) {
+  const identity = file => {
+    const real = fs.realpathSync.native(file);
+    return process.platform === 'win32' ? real.toLowerCase() : real;
+  };
+  const known = new Map(files.map(file => [identity(path.resolve(root, file)), file]));
   const testPatterns = config.overrides.flatMap(override => override.files);
   const findings = [];
   for (const line of output.split(/\r?\n/).filter(Boolean)) {
     const match = /^(.*):(\d+): (.+)$/.exec(line);
     if (!match) throw new Error(`Vulture returned an unrecognized finding: ${line}`);
     const absolute = path.resolve(root, match[1]);
-    const file = path.relative(root, absolute).replaceAll('\\', '/');
-    if (!known.has(file)) throw new Error(`Vulture returned a file outside the selected Python sources: ${file}`);
+    const file = known.get(identity(absolute));
+    if (!file) throw new Error(`Vulture returned a file outside the selected Python sources: ${path.relative(root, absolute).replaceAll('\\', '/')}`);
     const sourceLine = Number(match[2]);
     if (matches(file, testPatterns) || /(^|\/)migrations\//.test(file)
       || exemptions[file]?.includes(sourceLine) || /^unreachable code after /.test(match[3])) continue;

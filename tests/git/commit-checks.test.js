@@ -49,8 +49,8 @@ test('default hook isolates worktrees, respects local hooks and supports enforce
   assert.deepEqual(directoryIdentity(firstReport.root), directoryIdentity(root));
   assert.deepEqual(directoryIdentity(secondReport.root), directoryIdentity(second));
   assert.notDeepEqual(directoryIdentity(firstReport.root), directoryIdentity(secondReport.root));
-  assert.equal(firstReport.summary.errors, 0);
-  assert.equal(secondReport.summary.errors, 1);
+  assert.equal(firstReport.summary.gateErrors, 0);
+  assert.equal(secondReport.summary.gateErrors, 1);
   run('git', ['config', 'sloppy.mode', 'enforce'], root);
   assert.equal(await runDefaultHook(second), 1);
   fs.writeFileSync(path.join(root, '.git/hooks/pre-commit'), '#!/bin/sh\nexit 7\n');

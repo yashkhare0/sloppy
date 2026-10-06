@@ -52,7 +52,7 @@ function rankHotspots(findings) {
     || b.findings - a.findings || a.file.localeCompare(b.file)).slice(0, 10);
 }
 
-export function buildReport(root, config, files, checks, findings, revision = null) {
+export function buildReport(root, { config, files, checks, findings, revision = null }) {
   for (const item of findings) item.ownership = item.file.startsWith('../') || /(^|\/)node_modules\//.test(item.file) ? 'dependency' : matches(item.file, config.exclude ?? []) ? 'excluded' : 'project';
   findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column || a.ruleId.localeCompare(b.ruleId));
   const staleBaseline = applyBaseline(root, config, findings);
@@ -137,21 +137,15 @@ function countLabel(count, singular) {
   return `${count} ${singular}${count === 1 ? '' : 's'}`;
 }
 
-function writeMarkdownReport(report, directory) {
+function markdownIntro(report) {
   const status = !report.complete ? 'INCOMPLETE' : report.passed ? 'PASS' : 'FAIL';
-  const active = report.findings.filter(item => !item.baseline);
-  const blockers = active.filter(item => item.blocksGate);
-  const review = active.filter(item => item.kind === 'review' && item.ownership === 'project');
-  const failed = report.checks.filter(check => check.status === 'failed');
-  const skipped = report.checks.filter(check => check.status === 'skipped');
-  const completed = report.checks.filter(check => check.status === 'completed');
   const presentGroups = Object.entries(groupLabels).filter(([group]) => report.summary.groups[group].total);
   const baselineNote = !report.complete
     ? 'Counts may be partial until failed checks are rerun.'
     : report.summary.baselineConfigured
       ? 'Unbaselined findings are not necessarily changes in this Git revision.'
       : 'Counts cover all selected sources; no baseline is configured.';
-  const lines = [
+  return [
     '# Sloppy report', '',
     `Gate ${status}. ${countLabel(report.summary.files, 'file')}; ${countLabel(report.summary.gateErrors, 'blocker')}; ${countLabel(report.summary.reviewLeads, 'review lead')}; ${countLabel(report.summary.baseline, 'baseline finding')}.`,
     report.revision ? `Git ${report.revision.commit.slice(0, 12)}${report.revision.dirty === true ? ' + uncommitted changes' : report.revision.dirty === null ? ' (worktree state unknown)' : ''}.` : 'Git revision unavailable.',
@@ -165,6 +159,31 @@ function writeMarkdownReport(report, directory) {
       })] : ['No findings.']), '',
     '## Gate blockers', '',
   ];
+}
+
+function markdownChecks(checks) {
+  const failed = checks.filter(check => check.status === 'failed');
+  const skipped = checks.filter(check => check.status === 'skipped');
+  const completed = checks.filter(check => check.status === 'completed');
+  const lines = [];
+  for (const check of failed) lines.push(`- Failed: ${check.name} (${String(check.detail ?? 'no detail').replaceAll('\n', ' ')})`);
+  const skippedByReason = new Map();
+  for (const check of skipped) {
+    const reason = check.detail ?? 'no detail';
+    if (!skippedByReason.has(reason)) skippedByReason.set(reason, []);
+    skippedByReason.get(reason).push(check.name);
+  }
+  for (const [reason, names] of skippedByReason) lines.push(`- Skipped (${reason}): ${names.join(', ')}`);
+  lines.push(`- Completed (${completed.length}): ${completed.map(check => check.name).join(', ') || 'none'}.`, '',
+    'Full findings and guidance: report.json. File-grouped context and dependency advisories: repair-plan.json.', '');
+  return lines;
+}
+
+function writeMarkdownReport(report, directory) {
+  const active = report.findings.filter(item => !item.baseline);
+  const blockers = active.filter(item => item.blocksGate);
+  const review = active.filter(item => item.kind === 'review' && item.ownership === 'project');
+  const lines = markdownIntro(report);
   if (blockers.length) {
     lines.push(...topRules(blockers), '');
   } else lines.push('None.', '');
@@ -177,17 +196,7 @@ function writeMarkdownReport(report, directory) {
   lines.push('## Files to inspect', '',
     ...report.hotspots.slice(0, 5).map(item => `- ${item.file}: ${countLabel(item.rules.length, 'rule')}, ${countLabel(item.findings, 'finding')}${item.gateErrors ? `, ${countLabel(item.gateErrors, 'blocker')}` : ''}`),
     ...(report.hotspots.length ? [] : ['No high- or medium-confidence project findings.']), '',
-    '## Checks', '');
-  for (const check of failed) lines.push(`- Failed: ${check.name} (${String(check.detail ?? 'no detail').replaceAll('\n', ' ')})`);
-  const skippedByReason = new Map();
-  for (const check of skipped) {
-    const reason = check.detail ?? 'no detail';
-    if (!skippedByReason.has(reason)) skippedByReason.set(reason, []);
-    skippedByReason.get(reason).push(check.name);
-  }
-  for (const [reason, names] of skippedByReason) lines.push(`- Skipped (${reason}): ${names.join(', ')}`);
-  lines.push(`- Completed (${completed.length}): ${completed.map(check => check.name).join(', ') || 'none'}.`, '',
-    'Full findings and guidance: report.json. File-grouped context and dependency advisories: repair-plan.json.', '');
+    '## Checks', '', ...markdownChecks(report.checks));
   if (report.staleBaseline.length) lines.push(`Stale baseline entries: ${report.staleBaseline.reduce((n, entry) => n + entry.count, 0)}. Review before regenerating.`, '');
   fs.writeFileSync(path.join(directory, 'report.md'), lines.join('\n'));
 }

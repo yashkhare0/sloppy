@@ -50,7 +50,7 @@ test('module candidates follow type imports and protected entry points, never gu
   const candidates = analyzeTypescript(root, files, config).filter(f => f.ruleId.startsWith('dead-code/'));
   assert.deepEqual(candidates.map(f => f.file), ['orphan.ts']);
   assert.equal(candidates[0].severity, 'warning');
-  const report = buildReport(root, config, files, [{ name: 'structure', status: 'passed' }], candidates);
+  const report = buildReport(root, { config, files, checks: [{ name: 'structure', status: 'passed' }], findings: candidates });
   writeReport(report, path.join(root, 'report'));
   const plan = JSON.parse(fs.readFileSync(path.join(root, 'report/repair-plan.json')));
   assert.equal(plan.tasks[0].findings[0].evidence.confidence, 'review-candidate');
