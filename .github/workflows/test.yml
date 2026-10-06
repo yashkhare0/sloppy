@@ -5,14 +5,17 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
+          cache: pnpm
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install ruff==0.16.9
-      - run: npm ci
-      - run: npm test
-      - run: node src/cli/main.js check
+      - run: python -m pip install ruff==0.16.9 vulture==2.16
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm check

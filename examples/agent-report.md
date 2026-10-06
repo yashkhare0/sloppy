@@ -1,64 +1,47 @@
 # Sloppy report
 
-Result: FAIL; assessment complete.
-Files: 2; new errors: 4; warnings: 0; baseline findings: 0.
+Gate FAIL. 3 files; 4 blockers; 1 review lead; 0 baseline findings.
+Git revision unavailable.
+Counts cover all selected sources; no baseline is configured.
+Counts are findings under Sloppy's configured checks, not confirmed defects. Repository lint, typecheck, and tests were not run.
+
+## Evidence
+
+| Source | Blockers | Other findings |
+| --- | ---: | ---: |
+| Analyzer diagnostics in selected sources | 4 | 0 |
+| Review leads in selected sources | 0 | 1 |
+
+## Gate blockers
+
+- eslint/@typescript-eslint/no-explicit-any: 1 (src/unsafe.ts:1)
+- eslint/@typescript-eslint/no-unsafe-call: 1 (src/unsafe.ts:1)
+- eslint/@typescript-eslint/no-unsafe-member-access: 1 (src/unsafe.ts:1)
+- eslint/@typescript-eslint/no-unsafe-return: 1 (src/unsafe.ts:1)
+
+## Review leads
+
+Verify these before editing. Major leads are advisory; critical leads also appear under gate blockers.
+
+- python/nested-loop: 1 (src/loops.py:8)
+
+## Level and confidence
+
+| Level | High | Medium | Low |
+| --- | ---: | ---: | ---: |
+| major | 5 | 0 | 0 |
+
+Confidence measures the evidence behind a finding; it does not establish a defect.
+
+## Files to inspect
+
+- src/unsafe.ts: 4 rules, 4 findings, 4 blockers
+- src/loops.py: 1 rule, 1 finding
 
 ## Checks
 
-- typescript-structure: completed
-- python-structure: skipped — No applicable files
-- typescript-lint: completed
-- typescript-types: completed
-- python-lint: skipped — Disabled in configuration
-- python-types: skipped — Disabled in configuration
+- Skipped (Disabled in configuration): python-lint, python-types, python-unused-code, python-coverage, python-dependency-audit
+- Skipped (No applicable files): javascript-lint
+- Completed (4): typescript-structure, python-structure, typescript-lint, typescript-types.
 
-## Agent repair instructions
-
-Fix tool/configuration failures first. Address new errors before warnings. Preserve behavior and existing architecture. Re-run sloppy check after repairs. A listed auto-fix is a tool-provided candidate, not an instruction to apply it blindly. Baseline findings are existing debt, not verified correctness.
-
-### ERROR eslint/@typescript-eslint/no-explicit-any
-
-Location: src/unsafe.ts:1:31
-
-Unexpected any. Specify a different type.
-
-Evidence: {"endLine":1,"endColumn":34}
-
-Repair: Correct the violation of @typescript-eslint/no-explicit-any. Consult the rule documentation; preserve the public behavior.
-
-### ERROR eslint/@typescript-eslint/no-unsafe-return
-
-Location: src/unsafe.ts:1:38
-
-Unsafe return of a value of type `any`.
-
-Evidence: {"endLine":1,"endColumn":58}
-
-Repair: Correct the violation of @typescript-eslint/no-unsafe-return. Consult the rule documentation; preserve the public behavior.
-
-### ERROR eslint/@typescript-eslint/no-unsafe-call
-
-Location: src/unsafe.ts:1:45
-
-Unsafe call of an `any` typed value.
-
-Evidence: {"endLine":1,"endColumn":55}
-
-Repair: Correct the violation of @typescript-eslint/no-unsafe-call. Consult the rule documentation; preserve the public behavior.
-
-### ERROR eslint/@typescript-eslint/no-unsafe-member-access
-
-Location: src/unsafe.ts:1:51
-
-Unsafe member access .nope on an `any` value.
-
-Evidence: {"endLine":1,"endColumn":55}
-
-Repair: Correct the violation of @typescript-eslint/no-unsafe-member-access. Consult the rule documentation; preserve the public behavior.
-
-## Requires human or agent review
-
-- Whether abstractions earn their complexity and canonical helpers are reused.
-- Whether local, URL, server, and global state have the appropriate ownership.
-- Whether updates need transactional atomicity or async work can safely run in parallel.
-- Runtime validation, behavioral correctness, and accessibility beyond static lint coverage.
+Full findings and guidance: report.json. File-grouped context and dependency advisories: repair-plan.json.

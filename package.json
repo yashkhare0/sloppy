@@ -2,6 +2,7 @@
   "name": "sloppy",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.33.2",
   "type": "module",
   "bin": { "sloppy": "src/cli/main.js" },
   "scripts": { "test": "node --test", "check": "node src/cli/main.js check" },

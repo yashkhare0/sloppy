@@ -107,7 +107,10 @@
     "typescriptLint": false,
     "typescriptTypes": false,
     "pythonLint": true,
-    "pythonTypes": true
+    "pythonTypes": true,
+    "pythonUnusedCode": true,
+    "pythonCoverage": false,
+    "pythonDependencyAudit": false
   },
   "typescript": {
     "projects": [
@@ -137,7 +140,25 @@
       "PGH",
       "RUF"
     ],
-    "typeCheckingMode": "strict"
+    "typeCheckingMode": "strict",
+    "vultureExecutable": "vulture",
+    "vultureMinConfidence": 60,
+    "maxActivityLines": 30,
+    "maxInlinePromptLines": 3,
+    "coverageReport": null,
+    "coverageMinimum": 60,
+    "dependencyFile": null,
+    "uvExecutable": "uv",
+    "pipAuditExecutable": "pip-audit",
+    "severities": {
+      "python/nested-loop": "major",
+      "python/raw-dict-return": "major",
+      "python/inline-client": "major",
+      "python/inline-prompt": "minor",
+      "python/fat-activity": "critical",
+      "python/unused-definition": "major",
+      "python/dependency-cve": "critical"
+    }
   },
   "baseline": null,
   "deadCode": {

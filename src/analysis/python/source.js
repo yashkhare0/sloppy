@@ -7,8 +7,17 @@ import { cycles } from "../../domain/import-cycles.js";
 import { finding, metric } from "../../domain/findings.js";
 
 export function analyzePython(root, files, config) {
-  const script = fileURLToPath(new URL("./parse_source.py", import.meta.url));
-  const result = run(config.python.executable, [script], root, JSON.stringify({ root, files }));
+  const script = fileURLToPath(new URL("./parser/parse.py", import.meta.url));
+  const sourceRoot = path.resolve(path.dirname(script), '../../..');
+  const configuredExecutable = config.python.executable;
+  const executable = /[\\/]/.test(configuredExecutable) && !path.isAbsolute(configuredExecutable)
+    ? path.resolve(root, configuredExecutable)
+    : configuredExecutable;
+  const result = run(executable, ['-m', 'analysis.python.parser.parse'], sourceRoot, JSON.stringify({
+    root, files,
+    maxActivityLines: config.python.maxActivityLines,
+    maxInlinePromptLines: config.python.maxInlinePromptLines,
+  }));
   if (result.status !== 0) throw new Error(result.stderr || 'Python AST parser failed');
   const data = JSON.parse(result.stdout), findings = [], graph = new Map();
   for (const file of files) {
@@ -47,6 +56,11 @@ function resolvePythonImports(root, file, imports, config, findings) {
 
 function inspectParsedSource(file, item, config, findings) {
     for (const issue of item.codeHealth ?? []) findings.push(finding(issue.rule, { file: file, line: issue.line, column: issue.column, message: issue.message, guidance: issue.guidance, ...{ severity: issue.severity, evidence: issue.evidence } }));
+    for (const issue of item.targeted ?? []) findings.push(finding(issue.rule, {
+      file, line: issue.line, column: issue.column, symbol: issue.symbol,
+      message: issue.message, guidance: issue.guidance,
+      level: config.python.severities[issue.rule], evidence: issue.evidence,
+    }));
     for (const suppression of item.suppressions) findings.push(finding('python/suppression-reason', { file: file, line: suppression.line, column: suppression.column, message: 'Suppression lacks a justification after --', guidance: 'Specify the rule being suppressed and append -- followed by a meaningful reason of at least 10 characters.' }));
     for (const value of item.metrics) {
       const issue = metric(value.kind, value.value, fileLimits(file, config), { file, line: value.line, column: value.column, symbol: value.symbol });
