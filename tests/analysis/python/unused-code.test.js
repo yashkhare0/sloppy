@@ -30,6 +30,18 @@ test('Vulture maps path aliases to selected Python files only', t => {
     /outside the selected Python sources/);
 });
 
+test('Vulture attribute writes remain review candidates without claiming library properties are dead', context => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sloppy-vulture-attribute-'));
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'owner.py'), 'flow.redirect_uri = "https://example.test"\n');
+  const config = defaults(root);
+  const findings = parseVultureOutput(root, ['owner.py'], "owner.py:1: unused attribute 'redirect_uri' (60% confidence)\n", config, {});
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].blocksGate, false);
+  assert.match(findings[0].guidance, /property setters/);
+  assert.equal(findings[0].evidence.candidateKind, 'attribute-write');
+});
+
 test('client ownership boundaries are configurable without hiding clients in other modules', context => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sloppy-client-boundary-'));
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
