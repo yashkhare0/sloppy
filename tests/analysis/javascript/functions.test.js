@@ -134,3 +134,20 @@ test('mixed value imports and CommonJS cycles still block while erased exports r
   assert.equal(findings.filter(item => item.ruleId === 'architecture/circular-import' && item.blocksGate).length, 2);
   assert.equal(findings.filter(item => item.ruleId === 'architecture/type-import-cycle' && !item.blocksGate).length, 1);
 });
+
+test('reports distinguish source work from tests and tooling without dropping their blockers', context => {
+  const { root, config } = fixture(context, { 'source.ts': 'export const value = 1;' });
+  const item = (file, ruleId) => ({ file, ruleId, line: 1, column: 1, severity: 'error', level: 'major', kind: 'policy', confidence: 'high', blocksGate: true, fingerprint: `${file}:${ruleId}` });
+  const report = buildReport(root, { config, files: ['source.ts', 'tests/owner.test.ts', '.agents/skills/tool/script.py'], checks: [], findings: [
+    item('source.ts', 'structure/function'), item('tests/owner.test.ts', 'structure/function'),
+    item('tests/owner.test.ts', 'structure/complexity'), item('.agents/skills/tool/script.py', 'structure/function'),
+  ] });
+  assert.equal(report.summary.gateErrors, 4);
+  assert.equal(report.summary.sourceGroups.test.gateErrors, 2);
+  assert.equal(report.summary.sourceGroups.tooling.files, 1);
+  assert.equal(report.hotspots[0].file, 'source.ts');
+  writeReport(report, path.join(root, 'report'));
+  const plan = JSON.parse(fs.readFileSync(path.join(root, 'report/repair-plan.json')));
+  assert.deepEqual(plan.tasks.map(task => task.sourceRole), ['source', 'test', 'tooling']);
+  assert.match(fs.readFileSync(path.join(root, 'report/report.md'), 'utf8'), /Tests and fixtures/);
+});
