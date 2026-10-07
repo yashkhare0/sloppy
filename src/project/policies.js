@@ -5,7 +5,7 @@ import { minimatch } from 'minimatch';
 import { run } from "../runtime/processes.js";
 import { organizationDefaults, validateOrganization } from './organization.js';
 import {
-  normalizePythonChecks, pythonConfigurationKeys, pythonDefaults, validatePythonTools,
+  normalizePythonChecks, pythonConfigurationKeys, pythonDefaults, pythonSourcePaths, validatePythonTools,
 } from './python-policies.js';
 
 export const CONFIG = '.sloppy.json';
@@ -13,7 +13,7 @@ const limits = {
   file: [300, 500], function: [40, 80], component: [100, 180],
   class: [200, 350], complexity: [8, 12], nesting: [3, 4], parameters: [4, 6],
 };
-const ignored = ['**/node_modules/**', '**/.git/**', '**/.next/**', '**/.output/**', '**/.nuxt/**', '**/convex/_generated/**', '**/.venv*/**', '**/.claude/worktrees/**', '**/.codex/worktrees/**', '**/.tmp-tests-fs/**', '**/venv/**', '**/__pycache__/**', '**/dist/**', '**/build/**', '**/coverage/**', '**/*.d.ts', '**/*.generated.*'];
+const ignored = ['**/node_modules/**', '**/.git/**', '**/.next/**', '**/.output/**', '**/.nuxt/**', '**/convex/_generated/**', '**/.venv*/**', '**/.claude/worktrees/**', '**/.codex/worktrees/**', '**/.tmp-tests-fs/**', '**/venv/**', '**/__pycache__/**', '**/dist/**', '**/build/**', '**/coverage/**', '**/*.d.ts', '**/*.generated.*', '**/*.gen.*'];
 export function detect(root, files = discover(root, ignored)) {
   const packageFiles = files.filter(f => /(^|\/)package\.json$/.test(f));
   const deps = {};
@@ -57,7 +57,7 @@ export function defaults(root) {
       pythonCoverage: false, pythonDependencyAudit: false,
     },
     typescript: { projects: activeConfigs.length ? activeConfigs : ['tsconfig.json'], requiredOptions: ['strict', 'noUncheckedIndexedAccess', 'exactOptionalPropertyTypes'], eslintRules: {} },
-    python: pythonDefaults(),
+    python: { ...pythonDefaults(), extraPaths: fs.existsSync(path.join(root, 'pyrightconfig.json')) ? null : pythonSourcePaths(files) },
     baseline: null,
     deadCode: { entryPoints: [], protected: [] },
     organization: organizationDefaults(),
