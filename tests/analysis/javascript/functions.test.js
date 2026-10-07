@@ -135,6 +135,33 @@ test('mixed value imports and CommonJS cycles still block while erased exports r
   assert.equal(findings.filter(item => item.ruleId === 'architecture/type-import-cycle' && !item.blocksGate).length, 1);
 });
 
+test('imported suite callbacks exclude nested bodies but retain setup and individual test limits', context => {
+  const statements = Array.from({ length: 12 }, (_, index) => `  consume(${index});`).join('\n');
+  const { root, config } = fixture(context, {
+    'suite.test.ts': `import { describe as suite, it } from "vitest";\nsuite("owner", () => {\n  it("behavior", () => {\n${statements}\n  });\n});\n`,
+    'setup.test.ts': `import { describe } from "vitest";\ndescribe("setup", () => {\n${statements}\n});\n`,
+    'local.test.ts': `function describe(title: string, callback: () => void) { callback(); }\ndescribe("ordinary function", () => {\n${statements}\n});\n`,
+  });
+  config.overrides = [];
+  config.limits.function = [8, 10];
+  const findings = analyzeTypescript(root, ['suite.test.ts', 'setup.test.ts', 'local.test.ts'], config)
+    .filter(item => item.ruleId === 'structure/function');
+  assert.deepEqual(findings.filter(item => item.file === 'suite.test.ts').map(item => item.line), [3]);
+  assert.ok(findings.some(item => item.file === 'setup.test.ts' && item.line === 2));
+  assert.ok(findings.some(item => item.file === 'local.test.ts' && item.line === 2));
+});
+
+test('namespace and parameterized suites retain test metrics without inflating their parent suites', context => {
+  const { root, config } = fixture(context, {
+    'namespace.test.ts': 'import * as tests from "node:test";\ntests.describe("owner", () => {\n  tests.it("behavior", () => {\n    consume(1);\n    consume(2);\n    consume(3);\n    consume(4);\n  });\n});\n',
+    'matrix.test.ts': 'import { describe, it } from "vitest";\ndescribe.each([1, 2])("owner", () => {\n  it("behavior", () => {\n    consume(1);\n    consume(2);\n    consume(3);\n    consume(4);\n  });\n});\n',
+  });
+  config.overrides = [];
+  config.limits.function = [6, 7];
+  const findings = analyzeTypescript(root, ['namespace.test.ts', 'matrix.test.ts'], config).filter(item => item.ruleId === 'structure/function');
+  assert.deepEqual(findings.map(item => [item.file, item.line]), [['namespace.test.ts', 3], ['matrix.test.ts', 3]]);
+});
+
 test('reports distinguish source work from tests and tooling without dropping their blockers', context => {
   const { root, config } = fixture(context, { 'source.ts': 'export const value = 1;' });
   const item = (file, ruleId) => ({ file, ruleId, line: 1, column: 1, severity: 'error', level: 'major', kind: 'policy', confidence: 'high', blocksGate: true, fingerprint: `${file}:${ruleId}` });
