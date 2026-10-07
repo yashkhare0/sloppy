@@ -202,7 +202,7 @@ function checkImportBoundaries(context, location) {
 function serverSpecifier(specifier) { return ['server-only', 'next/headers'].includes(specifier) || specifier.startsWith('node:'); }
 
 function inspectFileName(file, config, findings) {
-    const name = path.basename(file).replace(/\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/, '').replace(/\.(?:test|spec|config|server|client)$/, '');
+    const name = path.basename(file).replace(/\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/, '').replace(/(?:\.(?:test|spec|e2e|config|server|client))+$/, '');
     if (fileNaming(file, config).files && !/^(?:[a-z][a-z0-9]*(?:-[a-z0-9]+)*|\[\[?\.?\.?\.?[A-Za-z][\w]*\]?\]|\([\w-]+\)|_[a-z]+)$/.test(name)) {
       findings.push(finding('naming/file', { file: file, line: 1, column: 1, message: `File name '${name}' is not kebab-case`, guidance: 'Use kebab-case unless this is a framework-mandated file; disable file naming using a scoped override only if necessary.' }));
     }

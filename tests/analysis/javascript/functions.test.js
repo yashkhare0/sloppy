@@ -96,3 +96,10 @@ test('JavaScript-only projects are detected, linted and structurally assessed', 
   for (const rule of ['eslint/no-unreachable', 'eslint/no-dupe-else-if', 'eslint/@typescript-eslint/no-unused-vars', 'structure/complexity']) assert.ok(report.findings.some(f => f.ruleId === rule), rule);
   assert.equal(report.checks.find(c => c.name === 'typescript-types').status, 'skipped');
 });
+
+test('file naming accepts E2E and stacked framework suffixes without accepting arbitrary dots', context => {
+  const files = ['work.e2e.ts', 'vite.server.config.ts', 'work.client.test.ts', 'work.unknown.ts'];
+  const { root, config } = fixture(context, Object.fromEntries(files.map(file => [file, 'export const value = 1;'])));
+  const findings = analyzeTypescript(root, files, config).filter(item => item.ruleId === 'naming/file');
+  assert.deepEqual(findings.map(item => item.file), ['work.unknown.ts']);
+});

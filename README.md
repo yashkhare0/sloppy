@@ -92,7 +92,7 @@ Each size limit is `[warning, error]`. All overrides require a documented reason
 
 Place this object in `overrides`. Do not ignore the entire shadcn directory; its code is owned and still receives correctness checks. Scoped `naming` flags can relax file/identifier conventions where an external contract requires it.
 
-Naming defaults: kebab-case TypeScript filenames with framework/dynamic-route and test/config/server/client suffix exceptions; camelCase functions/variables; PascalCase type/component names; snake_case Python modules/functions. External property names and destructured API properties are exempt from forced renaming.
+Naming defaults: kebab-case TypeScript filenames with framework/dynamic-route and test/spec/e2e/config/server/client suffix exceptions. Multiple recognized suffixes are accepted, such as `vite.server.config.ts`. Other project-specific filenames can use a reasoned scoped naming override. Identifiers use camelCase functions/variables, PascalCase type/component names, and snake_case Python modules/functions. External property names and destructured API properties are exempt from forced renaming.
 
 `boundaries` declares allowed ownership directions through `from`/`disallow` globs and a reason. Defaults prevent `src/shared` and `src/lib` importing `src/features` or `src/app`; edit these to match the actual architecture. `typescript.eslintRules` can tune named lint rules. Unknown config keys and invalid thresholds fail explicitly.
 
