@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { severityLevels } from '../domain/findings.js';
+import { sourceRole } from './source-scopes.js';
 
 const severityRules = [
   'python/nested-loop', 'python/raw-dict-return', 'python/inline-client',
@@ -34,7 +35,7 @@ export function pythonDefaults() {
 }
 
 export function pythonSourcePaths(files) {
-  const projects = files.filter(file => /(^|\/)pyproject\.toml$/.test(file));
+  const projects = files.filter(file => /(^|\/)pyproject\.toml$/.test(file) && sourceRole(file) === 'source');
   return [...new Set(['src', ...projects.map(file => path.posix.join(path.posix.dirname(file), 'src'))])].sort();
 }
 

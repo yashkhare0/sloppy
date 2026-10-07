@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseVultureOutput } from '../../../src/analysis/python/unused-code.js';
 import { CONFIG, defaults, load } from '../../../src/project/policies.js';
+import { pythonSourcePaths } from '../../../src/project/python-policies.js';
 import { analyzePython } from '../../../src/analysis/python/source.js';
 
 test('Vulture maps path aliases to selected Python files only', t => {
@@ -75,4 +76,13 @@ test('legacy Python client policies keep service boundaries and validate explici
   config.python.clientBoundaries = [''];
   save();
   assert.throws(() => load(root), /clientBoundaries/);
+});
+
+test('automatic Python roots do not promote fixture or repository-tooling manifests into application import paths', () => {
+  const roots = pythonSourcePaths([
+    'pyproject.toml', 'apps/backend/pyproject.toml', 'common/pyproject.toml',
+    '.agents/skills/collab/evals/fixtures/project/pyproject.toml',
+    '.agents/skills/policy/pyproject.toml', 'tests/fixtures/project/pyproject.toml',
+  ]);
+  assert.deepEqual(roots, ['apps/backend/src', 'common/src', 'src']);
 });
