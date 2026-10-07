@@ -103,3 +103,34 @@ test('file naming accepts E2E and stacked framework suffixes without accepting a
   const findings = analyzeTypescript(root, files, config).filter(item => item.ruleId === 'naming/file');
   assert.deepEqual(findings.map(item => item.file), ['work.unknown.ts']);
 });
+
+test('erased import cycles remain advisory while runtime cycles still block', context => {
+  const { root, config } = fixture(context, {
+    'composition.ts': 'import { adapter } from "./adapter"; export type Contract = number; export const result = adapter;',
+    'adapter.ts': 'import type { Contract } from "./composition"; export const adapter: Contract = 1;',
+    'runtime.ts': 'import { result } from "./other"; export const value = result;',
+    'other.ts': 'import { value } from "./runtime"; export const result = value;',
+  });
+  const graph = { edges: [], unresolved: [] };
+  const findings = analyzeTypescript(root, ['composition.ts', 'adapter.ts', 'runtime.ts', 'other.ts'], config, graph);
+  const typeCycle = findings.find(item => item.ruleId === 'architecture/type-import-cycle');
+  assert.ok(typeCycle);
+  assert.equal(typeCycle.kind, 'review');
+  assert.equal(typeCycle.blocksGate, false);
+  assert.ok(findings.find(item => item.ruleId === 'architecture/circular-import').blocksGate);
+  assert.ok(graph.edges.some(edge => edge.source === 'adapter.ts' && edge.typeOnly));
+});
+
+test('mixed value imports and CommonJS cycles still block while erased exports remain advisory', context => {
+  const { root, config } = fixture(context, {
+    'mixed.ts': 'import { type Contract, adapter } from "./value"; export const result: Contract = adapter;',
+    'value.ts': 'import { result } from "./mixed"; export type Contract = number; export const adapter = result;',
+    'contract.ts': 'export type { Contract } from "./types"; export const result = 1;',
+    'types.ts': 'import { result } from "./contract"; export type Contract = typeof result;',
+    'first.cjs': 'const result = require("./second.cjs"); exports.result = result;',
+    'second.cjs': 'const result = require("./first.cjs"); exports.result = result;',
+  });
+  const findings = analyzeTypescript(root, ['mixed.ts', 'value.ts', 'contract.ts', 'types.ts', 'first.cjs', 'second.cjs'], config);
+  assert.equal(findings.filter(item => item.ruleId === 'architecture/circular-import' && item.blocksGate).length, 2);
+  assert.equal(findings.filter(item => item.ruleId === 'architecture/type-import-cycle' && !item.blocksGate).length, 1);
+});

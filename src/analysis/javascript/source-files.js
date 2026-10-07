@@ -72,7 +72,10 @@ export function analyzeTypescript(root, files, config, dependencyGraph) {
   }).filter(Boolean).sort((a, b) => b.directory.length - a.directory.length);
   const shared = { root, config, projects, clients, servers, graph, runtimeGraph, dependencyGraph, findings };
   for (const file of files) analyzeFile(file, shared);
-  findings.push(...cycles(graph));
+  findings.push(...cycles(runtimeGraph));
+  findings.push(...cycles(graph, 'architecture/type-import-cycle').filter(item =>
+    item.evidence.cycle.some((file, index, cycle) => index < cycle.length - 1
+      && !runtimeGraph.get(file)?.includes(cycle[index + 1]))));
   findings.push(...unreachableModules(graph, config));
   for (const client of clients) inspectClientDependencies(client, shared);
 
