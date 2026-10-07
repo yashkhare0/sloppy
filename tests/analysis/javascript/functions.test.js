@@ -151,13 +151,15 @@ test('imported suite callbacks exclude nested bodies but retain setup and indivi
   assert.ok(findings.some(item => item.file === 'local.test.ts' && item.line === 2));
 });
 
-test('Next.js lint uses each app root and does not impose app rules on unrelated scripts', async context => {
+test('Next.js lint preserves app scope despite malformed fixture and tooling manifests', async context => {
   const { root, config } = fixture(context, {});
   const sources = {
     'apps/frontend/package.json': '{"dependencies":{"next":"16"}}',
     'apps/frontend/pages/index.tsx': 'export default function Page() { return <a href="/about">About</a>; }',
     'apps/frontend/pages/about.tsx': 'export default function About() { return <p>About</p>; }',
     'scripts/preview.tsx': 'export function Preview() { return <a href="/about">About</a>; }',
+    'tests/fixtures/package.json': '{"dependencies":',
+    'scripts/package.json': 'invalid json',
   };
   for (const [file, source] of Object.entries(sources)) {
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });

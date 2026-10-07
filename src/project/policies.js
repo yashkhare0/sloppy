@@ -31,8 +31,14 @@ export function detect(root, files = discover(root, ignored)) {
 }
 export function nextApplicationRoots(root, files) {
   return files.filter(file => /(^|\/)package\.json$/.test(file)).filter(file => {
-    const pkg = JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
-    return Boolean(pkg.dependencies?.next || pkg.devDependencies?.next);
+    const source = fs.readFileSync(path.join(root, file), 'utf8');
+    try {
+      const pkg = JSON.parse(source);
+      return Boolean(pkg?.dependencies?.next || pkg?.devDependencies?.next);
+    } catch (error) {
+      if (error instanceof SyntaxError) return false;
+      throw error;
+    }
   }).map(file => path.posix.dirname(file)).sort((left, right) => left.length - right.length || left.localeCompare(right));
 }
 export function defaults(root) {
