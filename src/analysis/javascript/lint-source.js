@@ -104,6 +104,7 @@ function lintFinding(root, file, message) {
 function lintDiagnostic(message) {
   if (message.line === 0) return { rule: 'configuration', guidance: 'Resolve the compiler-option prerequisite in the applicable tsconfig; this is a file-level lint configuration failure.' };
   if (message.fatal) return { rule: 'parse', guidance: 'Fix syntax or include this file in a configured TypeScript project.' };
+  if (message.ruleId === '@typescript-eslint/no-unnecessary-condition') return { rule: message.ruleId, guidance: 'Verify runtime invariants and compiler options before removing this guard. Without noUncheckedIndexedAccess, indexed reads may be typed as always present even when runtime values are missing.' };
   if (message.ruleId) return { rule: message.ruleId, guidance: `Correct the violation of ${message.ruleId}. Consult the rule documentation; preserve the public behavior.` };
   return { rule: 'directive', guidance: 'Remove unused lint directives or correct their rule IDs; preserve the public behavior.' };
 }
