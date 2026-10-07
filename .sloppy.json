@@ -28,7 +28,8 @@
     "**/build/**",
     "**/coverage/**",
     "**/*.d.ts",
-    "**/*.generated.*"
+    "**/*.generated.*",
+    "**/*.gen.*"
   ],
   "limits": {
     "file": [

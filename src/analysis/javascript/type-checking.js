@@ -23,6 +23,12 @@ export function typescriptTypes(root, config, files = []) {
     error.findings = findings;
     throw error;
   }
+  const unresolved = findings.filter(item => ['typescript/TS2307', 'typescript/TS2688', 'typescript/TS2792'].includes(item.ruleId));
+  if (unresolved.length) {
+    const error = new Error(`${unresolved.length} TypeScript imports or type definitions could not be resolved. Install the project's dependencies and check tsconfig paths/moduleResolution; remaining type diagnostics are withheld until import resolution is restored.`);
+    error.findings = unresolved;
+    throw error;
+  }
   return findings;
 }
 

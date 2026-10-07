@@ -4,9 +4,14 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import next from '@next/eslint-plugin-next';
 import { finding } from '../../domain/findings.js';
+import { typescriptTypes } from './type-checking.js';
 
 export async function lintTypescript(root, files, config) {
   const typed = config.checks.typescriptTypes;
+  if (typed) {
+    try { typescriptTypes(root, config, files); }
+    catch (error) { throw new Error(error.message); }
+  }
   const presets = typed ? tseslint.configs.strictTypeChecked : tseslint.configs.strict;
   const rules = {
     '@typescript-eslint/no-explicit-any': 'error',
@@ -71,7 +76,28 @@ export async function lintTypescript(root, files, config) {
     ],
   });
   const results = await lint.lintFiles(files);
-  return results.flatMap(result => result.messages.map(m => finding(`eslint/${m.line === 0 ? 'configuration' : m.ruleId ?? 'parse'}`, { file: path.relative(root, result.filePath).replaceAll('\\', '/'), line: Math.max(1, m.line ?? 1), column: Math.max(1, m.column ?? 1), message: m.message, guidance: m.line === 0 ? 'Resolve the compiler-option prerequisite in the applicable tsconfig; this is a file-level lint configuration failure.' : m.ruleId ? `Correct the violation of ${m.ruleId}. Consult the rule documentation; preserve the public behavior.` : 'Fix syntax or include this file in a configured TypeScript project.', ...{ severity: m.severity === 2 ? 'error' : 'warning', autoFix: Boolean(m.fix), evidence: { ...(m.line === 0 ? { originalRule: m.ruleId, locationKind: 'file-level' } : {}), endLine: m.endLine, endColumn: m.endColumn, ...(m.fix ? { replacement: m.fix } : {}) } } })));
+  return results.flatMap(result => result.messages.map(message => lintFinding(root, result.filePath, message)));
+}
+
+function lintFinding(root, file, message) {
+  const { rule, guidance } = lintDiagnostic(message);
+  return finding(`eslint/${rule}`, {
+    file: path.relative(root, file).replaceAll('\\', '/'),
+    line: Math.max(1, message.line ?? 1), column: Math.max(1, message.column ?? 1),
+    message: message.message, guidance, severity: message.severity === 2 ? 'error' : 'warning',
+    autoFix: Boolean(message.fix), evidence: {
+      ...(rule === 'configuration' ? { originalRule: message.ruleId, locationKind: 'file-level' } : {}),
+      endLine: message.endLine, endColumn: message.endColumn,
+      ...(message.fix ? { replacement: message.fix } : {}),
+    },
+  });
+}
+
+function lintDiagnostic(message) {
+  if (message.line === 0) return { rule: 'configuration', guidance: 'Resolve the compiler-option prerequisite in the applicable tsconfig; this is a file-level lint configuration failure.' };
+  if (message.fatal) return { rule: 'parse', guidance: 'Fix syntax or include this file in a configured TypeScript project.' };
+  if (message.ruleId) return { rule: message.ruleId, guidance: `Correct the violation of ${message.ruleId}. Consult the rule documentation; preserve the public behavior.` };
+  return { rule: 'directive', guidance: 'Remove unused lint directives or correct their rule IDs; preserve the public behavior.' };
 }
 
 export function lintJavascript(root, files, config) {
