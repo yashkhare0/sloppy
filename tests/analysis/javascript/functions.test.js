@@ -151,6 +151,25 @@ test('imported suite callbacks exclude nested bodies but retain setup and indivi
   assert.ok(findings.some(item => item.file === 'local.test.ts' && item.line === 2));
 });
 
+test('Next.js lint uses each app root and does not impose app rules on unrelated scripts', async context => {
+  const { root, config } = fixture(context, {});
+  const sources = {
+    'apps/frontend/package.json': '{"dependencies":{"next":"16"}}',
+    'apps/frontend/pages/index.tsx': 'export default function Page() { return <a href="/about">About</a>; }',
+    'apps/frontend/pages/about.tsx': 'export default function About() { return <p>About</p>; }',
+    'scripts/preview.tsx': 'export function Preview() { return <a href="/about">About</a>; }',
+  };
+  for (const [file, source] of Object.entries(sources)) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), source);
+  }
+  config.project.next = true;
+  config.checks.typescriptTypes = false;
+  const findings = await lintTypescript(root, ['apps/frontend/pages/index.tsx', 'scripts/preview.tsx'], config);
+  const links = findings.filter(item => item.ruleId === 'eslint/@next/next/no-html-link-for-pages');
+  assert.deepEqual(links.map(item => item.file), ['apps/frontend/pages/index.tsx']);
+});
+
 test('namespace and parameterized suites retain test metrics without inflating their parent suites', context => {
   const { root, config } = fixture(context, {
     'namespace.test.ts': 'import * as tests from "node:test";\ntests.describe("owner", () => {\n  tests.it("behavior", () => {\n    consume(1);\n    consume(2);\n    consume(3);\n    consume(4);\n  });\n});\n',

@@ -29,6 +29,12 @@ export function detect(root, files = discover(root, ignored)) {
     shadcn: files.some(f => /(^|\/)components\.json$/.test(f)),
   };
 }
+export function nextApplicationRoots(root, files) {
+  return files.filter(file => /(^|\/)package\.json$/.test(file)).filter(file => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
+    return Boolean(pkg.dependencies?.next || pkg.devDependencies?.next);
+  }).map(file => path.posix.dirname(file)).sort((left, right) => left.length - right.length || left.localeCompare(right));
+}
 export function defaults(root) {
   const files = discover(root, ignored);
   const project = detect(root, files);

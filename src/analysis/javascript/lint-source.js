@@ -5,6 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import next from '@next/eslint-plugin-next';
 import { finding } from '../../domain/findings.js';
 import { typescriptTypes } from './type-checking.js';
+import { discover, nextApplicationRoots } from '../../project/policies.js';
 
 export async function lintTypescript(root, files, config) {
   const typed = config.checks.typescriptTypes;
@@ -51,13 +52,15 @@ export async function lintTypescript(root, files, config) {
     },
   } } } };
   rules['quality/suppression-reason'] = 'error';
+  const nextRules = { ...next.configs.recommended.rules, ...next.configs['core-web-vitals'].rules };
+  const nextRoots = config.project.next ? nextApplicationRoots(root, discover(root, config.exclude)) : [];
   if (config.project.react) {
     plugins['react-hooks'] = reactHooks;
     Object.assign(rules, reactHooks.configs.recommended.rules);
   }
   if (config.project.next) {
     plugins['@next/next'] = next;
-    Object.assign(rules, next.configs.recommended.rules, next.configs['core-web-vitals'].rules);
+    if (!nextRoots.length) Object.assign(rules, nextRules);
   }
   const glob = ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'];
   const lint = new ESLint({
@@ -72,6 +75,11 @@ export async function lintTypescript(root, files, config) {
         settings: { next: { rootDir: root } },
         rules: { ...rules, ...config.typescript.eslintRules },
       },
+      ...nextRoots.map(directory => ({
+        files: [directory === '.' ? glob[0] : `${directory}/${glob[0]}`],
+        settings: { next: { rootDir: path.resolve(root, directory) } },
+        rules: { ...nextRules, ...config.typescript.eslintRules },
+      })),
       ...config.overrides.filter(o => o.naming?.identifiers !== undefined).map(o => ({ files: o.files, rules: { '@typescript-eslint/naming-convention': o.naming.identifiers ? namingRule : 'off' } })),
     ],
   });
