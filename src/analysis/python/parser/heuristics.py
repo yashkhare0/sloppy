@@ -167,12 +167,11 @@ def raw_dict_issue(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Issue | 
     ))
 
 
-def inline_client_issues(function: ast.FunctionDef | ast.AsyncFunctionDef,
-                         in_service: bool) -> list[Issue]:
+def inline_client_issues(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Issue]:
     result: list[Issue] = []
     for call in calls_in_scope(function):
         name = call_name(call)
-        if name and (name in CLIENT_CONSTRUCTORS or name.endswith(CLIENT_SUFFIXES)) and not in_service:
+        if name and (name in CLIENT_CONSTRUCTORS or name.endswith(CLIENT_SUFFIXES)):
             result.append(issue(call, IssueDescription(
                 'python/inline-client',
                 f'{name}() constructs a client inside {function.name}()',
@@ -201,15 +200,13 @@ def activity_issue(function: ast.FunctionDef | ast.AsyncFunctionDef,
     ))
 
 
-def function_issues(function: ast.FunctionDef | ast.AsyncFunctionDef, file: str,
+def function_issues(function: ast.FunctionDef | ast.AsyncFunctionDef,
                     limits: HeuristicLimits) -> list[Issue]:
-    normalized_file = file.replace('\\', '/')
-    in_service = '/services/' in f'/{normalized_file.strip("/")}/'
     result = nested_loop_issues(function)
     raw_dict = raw_dict_issue(function)
     if raw_dict:
         result.append(raw_dict)
-    result.extend(inline_client_issues(function, in_service))
+    result.extend(inline_client_issues(function))
     activity = activity_issue(function, limits)
     if activity:
         result.append(activity)
@@ -229,12 +226,12 @@ def prompt_issue(node: ast.Constant | ast.JoinedStr,
     ))
 
 
-def targeted_heuristics(tree: ast.Module, file: str,
+def targeted_heuristics(tree: ast.Module,
                         limits: HeuristicLimits) -> list[Issue]:
     functions = [node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
     result: list[Issue] = []
     for function in functions:
-        result.extend(function_issues(function, file, limits))
+        result.extend(function_issues(function, limits))
     for node in text_literals(tree):
         finding = prompt_issue(node, limits)
         if finding:

@@ -66,14 +66,19 @@ export function parseVultureOutput(root, files, output, config, exemptions) {
     if (matches(file, testPatterns) || /(^|\/)migrations\//.test(file)
       || exemptions[file]?.includes(sourceLine) || /^unreachable code after /.test(match[3])) continue;
     const detail = match[3].replace(/\s+\(\d+% confidence\)$/, '');
-    findings.push(finding('python/unused-definition', {
+    findings.push(unusedFinding(file, sourceLine, detail, match[3], config));
+  }
+  return findings;
+}
+
+function unusedFinding(file, sourceLine, detail, output, config) {
+  const attribute = detail.startsWith('unused attribute ');
+  return finding('python/unused-definition', {
       file, line: sourceLine, column: 1,
       symbol: detail.match(/'([^']+)'/)?.[1] ?? null,
       message: detail,
-      guidance: 'Check framework registration and external callers before removing this definition.',
+      guidance: attribute ? 'Check property setters, descriptors, and external-library consumers before changing this attribute write. Absence of local reads does not prove this write is unused.' : 'Check framework registration and external callers before removing this definition.',
       level: config.python.severities['python/unused-definition'],
-      evidence: { confidence: Number(match[3].match(/\((\d+)% confidence\)$/)?.[1] ?? 0), analyzer: 'Vulture' },
-    }));
-  }
-  return findings;
+      evidence: { confidence: Number(output.match(/\((\d+)% confidence\)$/)?.[1] ?? 0), analyzer: 'Vulture', candidateKind: attribute ? 'attribute-write' : 'definition' },
+    });
 }

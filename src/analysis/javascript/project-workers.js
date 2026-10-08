@@ -44,7 +44,8 @@ function groupTypescriptSources(root, files, config) {
     const read = ts.readConfigFile(absolute, ts.sys.readFile);
     if (read.error) throw new Error(ts.flattenDiagnosticMessageText(read.error.messageText, '\n'));
     const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(absolute), undefined, absolute);
-    return { project, directory: path.dirname(absolute), files: new Set(parsed.fileNames.map(f => path.resolve(f).toLowerCase())) };
+    const program = ts.createProgram(parsed.fileNames, { ...parsed.options, noEmit: true, incremental: false });
+    return { project, directory: path.dirname(absolute), files: new Set(program.getSourceFiles().map(source => path.resolve(source.fileName).toLowerCase())) };
   }).sort((a, b) => b.directory.length - a.directory.length || a.project.localeCompare(b.project));
   const groups = new Map(), uncovered = [];
   for (const file of files) {

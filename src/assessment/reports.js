@@ -6,6 +6,7 @@ import { matches } from "../project/policies.js";
 import { versions } from '../runtime/tool-versions.js';
 import { moduleOwners } from '../domain/module-ownership.js';
 import { confidenceLevels, severityLevels } from '../domain/findings.js';
+import { sourceRole, sourceRoleRank } from '../project/source-scopes.js';
 
 const groupLabels = {
   diagnostic: 'Analyzer diagnostics in selected sources',
@@ -45,9 +46,10 @@ function rankHotspots(findings) {
     byFile.get(item.file).push(item);
   }
   return [...byFile].map(([file, items]) => ({
-    file, rules: [...new Set(items.map(item => item.ruleId))].sort(),
+    file, sourceRole: sourceRole(file), rules: [...new Set(items.map(item => item.ruleId))].sort(),
     findings: items.length, gateErrors: items.filter(item => item.blocksGate).length,
-  })).sort((a, b) => Number(b.gateErrors > 0) - Number(a.gateErrors > 0)
+  })).sort((a, b) => sourceRoleRank[a.sourceRole] - sourceRoleRank[b.sourceRole]
+    || Number(b.gateErrors > 0) - Number(a.gateErrors > 0)
     || b.rules.length - a.rules.length || b.gateErrors - a.gateErrors
     || b.findings - a.findings || a.file.localeCompare(b.file)).slice(0, 10);
 }
@@ -65,13 +67,17 @@ export function buildReport(root, { config, files, checks, findings, revision = 
     Object.fromEntries(confidenceLevels.map(confidence => [confidence,
       active.filter(item => item.level === level && item.confidence === confidence).length]))]));
   const complete = checks.every(c => c.status !== 'failed') && files.length > 0;
+  const sourceGroups = Object.fromEntries(Object.keys(sourceRoleRank).map(role => [role, {
+    files: files.filter(file => sourceRole(file) === role).length,
+    ...counts(active.filter(item => item.ownership === 'project' && sourceRole(item.file) === role)),
+  }]));
   return {
     version: 1, root, project: config.project, configFile: '.sloppy.json', toolVersions: versions,
     revision,
     complete, passed: complete && gateErrors === 0,
     repositoryChecks: 'not-run',
     summary: { files: files.length, errors, warnings, gateErrors, reviewLeads, levels, levelConfidence, groups,
-      baseline: findings.filter(f => f.baseline).length, baselineConfigured: Boolean(config.baseline) },
+      baseline: findings.filter(f => f.baseline).length, baselineConfigured: Boolean(config.baseline), sourceGroups },
     hotspots: rankHotspots(active),
     checks, findings, staleBaseline,
     moduleMap: files.map(file => ({ file, owners: config.organization ? moduleOwners(file, config.organization).map(owner => owner.name) : [] })),
@@ -101,7 +107,7 @@ export function writeReport(report, directory) {
     let source = null;
     try { source = fs.readFileSync(absolute, 'utf8'); } catch { /* Compiler diagnostics can point to unavailable files. */ }
     const lines = source?.split(/\r?\n/);
-    return { file, imports: (report.dependencyGraph?.edges ?? []).filter(e => e.source === file), importedBy: (report.dependencyGraph?.edges ?? []).filter(e => e.target === file),
+    return { file, sourceRole: sourceRole(file), imports: (report.dependencyGraph?.edges ?? []).filter(e => e.source === file), importedBy: (report.dependencyGraph?.edges ?? []).filter(e => e.target === file),
       priority: findings.some(f => f.blocksGate) ? 'gate' : findings.some(f => f.kind === 'review') ? 'review' : 'advisory',
       sourceSha256: source === null ? null : crypto.createHash('sha256').update(source).digest('hex'),
       findings: findings.map(f => ({ fingerprint: f.fingerprint, ruleId: f.ruleId, severity: f.severity, level: f.level, kind: f.kind, confidence: f.confidence, blocksGate: f.blocksGate, autoFix: f.autoFix, line: f.line, column: f.column, symbol: f.symbol,
@@ -109,13 +115,14 @@ export function writeReport(report, directory) {
         sourceExcerpt: lines ? lines.slice(Math.max(0, f.line - 2), f.line + 1).map((text, i) => ({ line: Math.max(1, f.line - 1) + i, text })) : [],
       })) };
   }).sort((a, b) => {
-    return priorityRank[a.priority] - priorityRank[b.priority]
+    return sourceRoleRank[a.sourceRole] - sourceRoleRank[b.sourceRole]
+      || priorityRank[a.priority] - priorityRank[b.priority]
       || (hotspotRank.get(a.file) ?? Infinity) - (hotspotRank.get(b.file) ?? Infinity)
       || a.file.localeCompare(b.file);
   });
   fs.writeFileSync(path.join(directory, 'repair-plan.json'), JSON.stringify({ version: 1, root: report.root,
     complete: report.complete, blockers: report.checks.filter(c => c.status === 'failed'),
-    instructions: 'Resolve failed checks first. Compare diagnostics with repository checks; verify review leads before editing. Check source hashes before changes and rerun the assessment afterward.',
+    instructions: 'Resolve failed checks first. Compare diagnostics with repository checks; verify review leads before editing. Tasks distinguish source, test/fixture, and tooling paths without changing their gate status. Do not remove defensive guards solely because compiler options omit unchecked-index safety. Check source hashes before changes and rerun the assessment afterward.',
     dependencyFindings: report.findings.filter(f => !f.baseline && f.kind === 'dependency'),
     externalDiagnostics: report.findings.filter(f => !f.baseline && f.ownership !== 'project' && f.kind !== 'dependency'), tasks }, null, 2) + '\n');
   if (report.dependencyGraph) fs.writeFileSync(path.join(directory, 'dependency-graph.json'), JSON.stringify(report.dependencyGraph, null, 2) + '\n');
@@ -157,6 +164,13 @@ function markdownIntro(report) {
         const { total, gateErrors } = report.summary.groups[group];
         return `| ${label} | ${gateErrors} | ${total - gateErrors} |`;
       })] : ['No findings.']), '',
+    '## Source scope', '',
+    '| Paths | Files | Blockers | Other findings |', '| --- | ---: | ---: | ---: |',
+    ...Object.entries({ source: 'Source', test: 'Tests and fixtures', tooling: 'Scripts and repository tooling' }).map(([role, label]) => {
+      const group = report.summary.sourceGroups[role];
+      return `| ${label} | ${group.files} | ${group.gateErrors} | ${group.total - group.gateErrors} |`;
+    }), '',
+    'Path-based scope labels do not exempt files from checks. Source candidates rank before tests and tooling.', '',
     '## Gate blockers', '',
   ];
 }
@@ -194,7 +208,7 @@ function writeMarkdownReport(report, directory) {
     ...severityLevels.filter(level => report.summary.levels[level]).map(level => `| ${level} | ${confidenceLevels.map(confidence => report.summary.levelConfidence[level][confidence]).join(' | ')} |`),
     '', 'Confidence measures the evidence behind a finding; it does not establish a defect.', '');
   lines.push('## Files to inspect', '',
-    ...report.hotspots.slice(0, 5).map(item => `- ${item.file}: ${countLabel(item.rules.length, 'rule')}, ${countLabel(item.findings, 'finding')}${item.gateErrors ? `, ${countLabel(item.gateErrors, 'blocker')}` : ''}`),
+    ...report.hotspots.slice(0, 5).map(item => `- ${item.file} [${item.sourceRole}]: ${countLabel(item.rules.length, 'rule')}, ${countLabel(item.findings, 'finding')}${item.gateErrors ? `, ${countLabel(item.gateErrors, 'blocker')}` : ''}`),
     ...(report.hotspots.length ? [] : ['No high- or medium-confidence project findings.']), '',
     '## Checks', '', ...markdownChecks(report.checks));
   if (report.staleBaseline.length) lines.push(`Stale baseline entries: ${report.staleBaseline.reduce((n, entry) => n + entry.count, 0)}. Review before regenerating.`, '');

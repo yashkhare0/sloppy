@@ -56,17 +56,24 @@ function resolvePythonImports(root, file, imports, config, findings) {
 
 function inspectParsedSource(file, item, config, findings) {
     for (const issue of item.codeHealth ?? []) findings.push(finding(issue.rule, { file: file, line: issue.line, column: issue.column, message: issue.message, guidance: issue.guidance, ...{ severity: issue.severity, evidence: issue.evidence } }));
-    for (const issue of item.targeted ?? []) findings.push(finding(issue.rule, {
-      file, line: issue.line, column: issue.column, symbol: issue.symbol,
-      message: issue.message, guidance: issue.guidance,
-      level: config.python.severities[issue.rule], evidence: issue.evidence,
-    }));
+    inspectTargetedIssues(file, item.targeted ?? [], config, findings);
     for (const suppression of item.suppressions) findings.push(finding('python/suppression-reason', { file: file, line: suppression.line, column: suppression.column, message: 'Suppression lacks a justification after --', guidance: 'Specify the rule being suppressed and append -- followed by a meaningful reason of at least 10 characters.' }));
     for (const value of item.metrics) {
       const issue = metric(value.kind, value.value, fileLimits(file, config), { file, line: value.line, column: value.column, symbol: value.symbol });
       if (issue) findings.push(issue);
     }
     if (fileNaming(file, config).files && !/^[a-z_][a-z0-9_]*\.py$/.test(path.basename(file))) findings.push(finding('naming/file', { file: file, line: 1, column: 1, message: 'Python module name must be snake_case', guidance: 'Rename the module and update its imports.' }));
+}
+
+function inspectTargetedIssues(file, issues, config, findings) {
+  for (const issue of issues) {
+    if (issue.rule === 'python/inline-client' && matches(file, config.python.clientBoundaries ?? ['**/services/**'])) continue;
+    findings.push(finding(issue.rule, {
+      file, line: issue.line, column: issue.column, symbol: issue.symbol,
+      message: issue.message, guidance: issue.guidance,
+      level: config.python.severities[issue.rule], evidence: issue.evidence,
+    }));
+  }
 }
 
 function inspectImportBoundary(context) {

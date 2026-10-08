@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { severityLevels } from '../domain/findings.js';
+import { sourceRole } from './source-scopes.js';
 
 const severityRules = [
   'python/nested-loop', 'python/raw-dict-return', 'python/inline-client',
@@ -17,7 +18,7 @@ export const pythonConfigurationKeys = [
   'executable', 'ruffExecutable', 'ruffSelect', 'typeCheckingMode',
   'vultureExecutable', 'vultureMinConfidence', 'maxActivityLines',
   'maxInlinePromptLines', 'coverageReport', 'coverageMinimum',
-  'dependencyFile', 'uvExecutable', 'pipAuditExecutable', 'severities', 'extraPaths',
+  'dependencyFile', 'uvExecutable', 'pipAuditExecutable', 'severities', 'extraPaths', 'clientBoundaries',
 ];
 
 export function pythonDefaults() {
@@ -28,12 +29,13 @@ export function pythonDefaults() {
     vultureMinConfidence: 60, maxActivityLines: 30, maxInlinePromptLines: 3,
     coverageReport: null, coverageMinimum: 60, dependencyFile: null,
     uvExecutable: 'uv', pipAuditExecutable: 'pip-audit', extraPaths: null,
+    clientBoundaries: ['**/services/**'],
     severities: structuredClone(defaultSeverities),
   };
 }
 
 export function pythonSourcePaths(files) {
-  const projects = files.filter(file => /(^|\/)pyproject\.toml$/.test(file));
+  const projects = files.filter(file => /(^|\/)pyproject\.toml$/.test(file) && sourceRole(file) === 'source');
   return [...new Set(['src', ...projects.map(file => path.posix.join(path.posix.dirname(file), 'src'))])].sort();
 }
 
@@ -51,6 +53,7 @@ export function normalizePythonChecks(config) {
   config.python.uvExecutable ??= 'uv';
   config.python.pipAuditExecutable ??= 'pip-audit';
   config.python.extraPaths ??= null;
+  config.python.clientBoundaries ??= ['**/services/**'];
   config.python.severities = { ...defaultSeverities, ...(config.python.severities ?? {}) };
 }
 
@@ -109,6 +112,9 @@ function validateThresholds(python) {
 }
 
 function validatePaths(python, root) {
+  if (!Array.isArray(python.clientBoundaries) || python.clientBoundaries.some(value => typeof value !== 'string' || !value.trim())) {
+    throw new Error('python.clientBoundaries must be a list of source glob patterns');
+  }
   if (python.extraPaths !== null) {
     if (!Array.isArray(python.extraPaths)) throw new Error('python.extraPaths must be null or a list of project-relative paths');
     for (const value of python.extraPaths) projectPath(root, value, 'python.extraPaths');

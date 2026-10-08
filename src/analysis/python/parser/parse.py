@@ -103,7 +103,7 @@ def analyze(root: str, file: str, limits: HeuristicLimits) -> SourceAnalysis:
     lines = code_lines(text, documentation_spans(tree))
     return SourceAnalysis(
         structure(tree, lines), imports(tree), suppressions(text),
-        code_health(tree), targeted_heuristics(tree, file, limits),
+        code_health(tree), targeted_heuristics(tree, limits),
     )
 
 

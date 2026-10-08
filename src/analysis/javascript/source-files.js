@@ -4,7 +4,7 @@ import path from 'node:path';
 import ts from 'typescript';
 import { matches, fileLimits, fileNaming } from "../../project/policies.js";
 import { finding, metric } from "../../domain/findings.js";
-import { codeHealth, unreachableModules } from "./functions.js";
+import { codeHealth, suiteBindings, testSuite, unreachableModules } from "./functions.js";
 
 const functionNode = node => ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node) || ts.isConstructorDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node);
 const controls = node => ts.isIfStatement(node) || ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node) || ts.isWhileStatement(node) || ts.isDoStatement(node) || ts.isSwitchStatement(node) || ts.isTryStatement(node);
@@ -72,7 +72,10 @@ export function analyzeTypescript(root, files, config, dependencyGraph) {
   }).filter(Boolean).sort((a, b) => b.directory.length - a.directory.length);
   const shared = { root, config, projects, clients, servers, graph, runtimeGraph, dependencyGraph, findings };
   for (const file of files) analyzeFile(file, shared);
-  findings.push(...cycles(graph));
+  findings.push(...cycles(runtimeGraph));
+  findings.push(...cycles(graph, 'architecture/type-import-cycle').filter(item =>
+    item.evidence.cycle.some((file, index, cycle) => index < cycle.length - 1
+      && !runtimeGraph.get(file)?.includes(cycle[index + 1]))));
   findings.push(...unreachableModules(graph, config));
   for (const client of clients) inspectClientDependencies(client, shared);
 
@@ -120,7 +123,7 @@ function visit(node, context) {
       if (functionNode(node) && node.body) {
         const symbol = symbolOf(node);
         const component = config.project.react && /^[A-Z]/.test(symbol) && !ts.isMethodDeclaration(node);
-        addMetric(component ? 'component' : 'function', span(node), node, symbol);
+        addMetric(component ? 'component' : 'function', span(node, testSuite(node, context)), node, symbol);
         const values = { ...complexity(node), parameters: node.parameters.length };
         for (const [kind, value] of Object.entries(values)) addMetric(kind, value, node, symbol);
       }
@@ -167,10 +170,21 @@ function analyzeFile(file, shared) {
       const item = metric(kind, value, limits, { file, line: position.line + 1, column: position.character + 1, symbol });
       if (item) findings.push(item);
     };
-    const span = node => {
+    const span = (node, excludeNested = false) => {
       const start = source.getLineAndCharacterOfPosition(node.getStart(source)).line;
       const end = source.getLineAndCharacterOfPosition(node.end).line;
-      return [...lines].filter(line => line >= start && line <= end).length;
+      const nestedLines = new Set();
+      function collect(child) {
+        if (child !== node && functionNode(child) && child.body) {
+          const nestedStart = source.getLineAndCharacterOfPosition(child.body.getStart(source)).line;
+          const nestedEnd = source.getLineAndCharacterOfPosition(child.body.end).line;
+          for (let line = nestedStart + 1; line < nestedEnd; line++) nestedLines.add(line);
+          return;
+        }
+        ts.forEachChild(child, collect);
+      }
+      if (excludeNested) collect(node);
+      return [...lines].filter(line => line >= start && line <= end && !nestedLines.has(line)).length;
     };
     addMetric('file', lines.size, null, null);
     inspectFileName(file, config, findings);
@@ -183,7 +197,7 @@ function analyzeFile(file, shared) {
 
 
 
-    const context = { root, file, config, source, options, imports, servers, dependencyGraph, findings, addMetric, span };
+    const context = { root, file, config, source, options, imports, servers, dependencyGraph, findings, addMetric, span, suites: suiteBindings(source) };
     visit(source, context);
     if (!source.parseDiagnostics.length) findings.push(...codeHealth(source, file));
     const { edges, runtimeEdges } = resolveImports(context);
@@ -202,7 +216,7 @@ function checkImportBoundaries(context, location) {
 function serverSpecifier(specifier) { return ['server-only', 'next/headers'].includes(specifier) || specifier.startsWith('node:'); }
 
 function inspectFileName(file, config, findings) {
-    const name = path.basename(file).replace(/\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/, '').replace(/\.(?:test|spec|config|server|client)$/, '');
+    const name = path.basename(file).replace(/\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/, '').replace(/(?:\.(?:test|spec|e2e|config|server|client))+$/, '');
     if (fileNaming(file, config).files && !/^(?:[a-z][a-z0-9]*(?:-[a-z0-9]+)*|\[\[?\.?\.?\.?[A-Za-z][\w]*\]?\]|\([\w-]+\)|_[a-z]+)$/.test(name)) {
       findings.push(finding('naming/file', { file: file, line: 1, column: 1, message: `File name '${name}' is not kebab-case`, guidance: 'Use kebab-case unless this is a framework-mandated file; disable file naming using a scoped override only if necessary.' }));
     }

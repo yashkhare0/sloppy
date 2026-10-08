@@ -1,6 +1,56 @@
 import ts from 'typescript';
 import { finding } from "../../domain/findings.js";
 import { matches } from "../../project/policies.js";
+import { sourceRole } from '../../project/source-scopes.js';
+
+const suiteNames = ['describe', 'suite'];
+const suiteModifiers = ['only', 'skip', 'todo', 'each', 'concurrent', 'sequential'];
+
+function suiteImport(statement) {
+  return ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)
+    && ['vitest', '@jest/globals', 'node:test'].includes(statement.moduleSpecifier.text)
+    && !statement.importClause?.isTypeOnly;
+}
+
+export function suiteBindings(source) {
+  const names = new Set(), namespaces = new Set();
+  for (const statement of source.statements.filter(suiteImport)) {
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings) continue;
+    if (ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+    collectSuiteNames(bindings, names);
+  }
+  return { names, namespaces };
+}
+
+function collectSuiteNames(bindings, names) {
+  if (!ts.isNamedImports(bindings)) return;
+  for (const binding of bindings.elements) {
+    if (!binding.isTypeOnly && suiteNames.includes(binding.propertyName?.text ?? binding.name.text)) names.add(binding.name.text);
+  }
+}
+
+function suiteTarget(expression) {
+  let target = expression;
+  while (ts.isCallExpression(target)) target = target.expression;
+  if (ts.isTaggedTemplateExpression(target)) target = target.tag;
+  while (ts.isPropertyAccessExpression(target) && suiteModifiers.includes(target.name.text)) target = target.expression;
+  return target;
+}
+
+export function testSuite(node, context) {
+  if (sourceRole(context.file) !== 'test' || !ts.isCallExpression(node.parent)) return false;
+  const call = node.parent;
+  if (!call.arguments.includes(node)) return false;
+  const target = suiteTarget(call.expression);
+  if (ts.isIdentifier(target)) return context.suites.names.has(target.text);
+  return namespaceSuite(target, context.suites.namespaces);
+}
+
+function namespaceSuite(target, namespaces) {
+  return ts.isPropertyAccessExpression(target) && ts.isIdentifier(target.expression)
+    && namespaces.has(target.expression.text) && suiteNames.includes(target.name.text);
+}
 
 // Token identity preserves literal values and operators while ignoring formatting.
 function tokens(node, source) {

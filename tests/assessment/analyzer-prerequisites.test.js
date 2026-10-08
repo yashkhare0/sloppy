@@ -175,3 +175,18 @@ test('legacy Python configurations discover workspace roots without rewriting co
   assert.equal(report.passed, true, JSON.stringify(report.findings));
   assert.equal(fs.readFileSync(path.join(root, CONFIG), 'utf8'), original);
 });
+
+test('TypeScript project coverage includes imported mts modules outside explicit include patterns', async context => {
+  const { root, save } = fixture(context, {
+    'tsconfig.json': JSON.stringify({ compilerOptions: {
+      strict: true, noUncheckedIndexedAccess: true, exactOptionalPropertyTypes: true,
+      module: 'ESNext', moduleResolution: 'Bundler', allowImportingTsExtensions: true,
+    }, include: ['src/**/*.ts'] }),
+    'src/entry.ts': 'import { value } from "./model.mts"; export const result = value;\n',
+    'src/model.mts': 'export const value = 1;\n',
+  });
+  save();
+  const report = await check(root, path.join(root, 'report'));
+  assert.equal(report.complete, true, JSON.stringify(report.checks));
+  assert.equal(report.passed, true, JSON.stringify(report.findings));
+});
