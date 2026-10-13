@@ -131,5 +131,9 @@ test('large severity totals are readable and the example matches the renderer', 
   const example = JSON.parse(fs.readFileSync(new URL('../../examples/agent-report.json', import.meta.url), 'utf8'));
   writeReport(example, output);
   const markdown = fs.readFileSync(path.join(output, 'report.md'), 'utf8').trimEnd();
-  assert.equal(markdown, fs.readFileSync(new URL('../../examples/agent-report.md', import.meta.url), 'utf8').trimEnd());
+  const expected = fs.readFileSync(new URL('../../examples/agent-report.md', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  for (const lineEnding of ['\n', '\r\n']) {
+    const snapshot = expected.replaceAll('\n', lineEnding);
+    assert.equal(markdown, snapshot.replaceAll('\r\n', '\n').trimEnd());
+  }
 });
