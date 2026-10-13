@@ -27,6 +27,29 @@ const tsconfig = JSON.stringify({ compilerOptions: {
 }, include: ['src'] });
 const cli = path.resolve('src/cli/main.js');
 
+test('CLI reports major advisory severity while retaining exit zero', context => {
+  const { root, config, save } = fixture(context, {
+    'src/loops.py': 'def aggregate(values: list[list[int]]) -> int:\n    total = 0\n    for row in values:\n        for value in row:\n            total += value\n    return total\n',
+  });
+  config.checks.pythonTypes = false;
+  save();
+  const result = run(process.execPath, [cli, 'check', '--root', root, '--out', path.join(root, 'report')], root);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^PASS: 1 finding; 0 critical, 1 major, 0 minor, 0 info\./);
+  assert.match(result.stdout, /Tags: \[review\] 1; \[blocking\] 0, \[advisory\] 1\./);
+});
+
+test('CLI reports incomplete severity totals without hiding setup failure', context => {
+  const { root, config, save } = fixture(context, { 'src/main.py': 'value = 1\n' });
+  config.python.executable = 'missing-sloppy-python';
+  config.checks.pythonTypes = false;
+  save();
+  const result = run(process.execPath, [cli, 'check', '--root', root, '--out', path.join(root, 'report')], root);
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /^INCOMPLETE: 0 findings; 0 critical, 0 major, 0 minor, 0 info\./);
+  assert.match(result.stderr, /python-structure:.*missing-sloppy-python/);
+});
+
 for (const extension of ['ts', 'js']) {
   test(`${extension} unused lint suppressions fail with exit 1, not incomplete`, t => {
     const { root, save } = fixture(t, {
@@ -38,6 +61,8 @@ for (const extension of ['ts', 'js']) {
     const result = run(process.execPath, [cli, 'check', '--root', root, '--out', output], root);
     const report = JSON.parse(fs.readFileSync(path.join(output, 'report.json')));
     assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /^FAIL: 1 finding; 0 critical, 1 major, 0 minor, 0 info\./);
+    assert.doesNotMatch(result.stdout, /gate blockers|Rule levels/);
     assert.equal(report.complete, true);
     const issue = report.findings.find(item => item.message.startsWith('Unused eslint-disable directive'));
     assert.equal(issue.ruleId, 'eslint/directive');

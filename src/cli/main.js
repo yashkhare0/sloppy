@@ -4,6 +4,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { CONFIG, defaults, load } from "../project/policies.js";
 import { check } from "../assessment/assess-project.js";
+import { formatReportSummary, formatReportTags } from '../assessment/reports.js';
 import { installHook } from "../git/repository-hooks.js";
 import { installDefaultHook, runDefaultHook } from "../git/commit-checks.js";
 
@@ -55,10 +56,9 @@ async function assess(root, output, values, command) {
       fs.writeFileSync(path.join(root, CONFIG), JSON.stringify(config, null, 2) + '\n');
       console.log(`Recorded ${report.findings.length} existing findings. Commit the baseline and review changes to it.`);
     } else {
-      const status = !report.complete ? 'INCOMPLETE' : report.passed ? 'PASS' : 'FAIL';
-      console.log(`${status}: ${report.summary.gateErrors} gate blockers, ${report.summary.reviewLeads} review leads, ${report.summary.baseline} baseline findings; ${report.summary.baselineConfigured ? 'baseline configured' : 'no baseline configured'}`);
-      const levels = Object.entries(report.summary.levels).filter(([, count]) => count).map(([level, count]) => `${count} ${level}`).join(', ');
-      console.log(`Rule levels (not risk ratings): ${levels || 'none'}`);
+      console.log(formatReportSummary(report));
+      console.log(formatReportTags(report));
+      console.log(`${report.summary.files} files, ${report.summary.baseline} baseline findings; ${report.summary.baselineConfigured ? 'baseline configured' : 'no baseline configured'}`);
       console.log(`Report: ${path.join(output, 'report.md')}\nJSON: ${path.join(output, 'report.json')}`);
       for (const c of report.checks.filter(c => c.status === 'failed')) console.error(`${c.name}: ${c.detail}`);
       process.exitCode = report.complete ? (report.passed ? 0 : 1) : 2;
