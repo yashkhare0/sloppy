@@ -88,11 +88,35 @@
       }
     },
     "baseline": 0,
-    "baselineConfigured": false
+    "baselineConfigured": false,
+    "sourceGroups": {
+      "source": {
+        "files": 3,
+        "total": 5,
+        "gateErrors": 4,
+        "errors": 5,
+        "warnings": 0
+      },
+      "test": {
+        "files": 0,
+        "total": 0,
+        "gateErrors": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "tooling": {
+        "files": 0,
+        "total": 0,
+        "gateErrors": 0,
+        "errors": 0,
+        "warnings": 0
+      }
+    }
   },
   "hotspots": [
     {
       "file": "src/unsafe.ts",
+      "sourceRole": "source",
       "rules": [
         "eslint/@typescript-eslint/no-explicit-any",
         "eslint/@typescript-eslint/no-unsafe-call",
@@ -104,6 +128,7 @@
     },
     {
       "file": "src/loops.py",
+      "sourceRole": "source",
       "rules": [
         "python/nested-loop"
       ],

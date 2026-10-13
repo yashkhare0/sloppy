@@ -1,42 +1,64 @@
 # Sloppy report
 
-Gate FAIL. 3 files; 4 blockers; 1 review lead; 0 baseline findings.
+FAIL: 5 findings; 0 critical, 5 major, 0 minor, 0 info.
+3 files; 0 baseline findings.
 Git revision unavailable.
 Counts cover all selected sources; no baseline is configured.
-Counts are findings under Sloppy's configured checks, not confirmed defects. Repository lint, typecheck, and tests were not run.
+Severities follow configured rule levels, not confirmed defect risk. Counts include advisory findings. Repository lint, typecheck, and tests were not run.
+Tags describe the category and gate status. [review] findings need verification before editing. [blocking] findings fail the gate; [advisory] findings do not.
 
-## Evidence
+## Critical
 
-| Source | Blockers | Other findings |
-| --- | ---: | ---: |
-| Analyzer diagnostics in selected sources | 4 | 0 |
-| Review leads in selected sources | 0 | 1 |
+None.
 
-## Gate blockers
+## Major
 
-- eslint/@typescript-eslint/no-explicit-any: 1 (src/unsafe.ts:1)
-- eslint/@typescript-eslint/no-unsafe-call: 1 (src/unsafe.ts:1)
-- eslint/@typescript-eslint/no-unsafe-member-access: 1 (src/unsafe.ts:1)
-- eslint/@typescript-eslint/no-unsafe-return: 1 (src/unsafe.ts:1)
+- `eslint/@typescript-eslint/no-explicit-any` [diagnostic] [blocking]: 1 finding, `src/unsafe.ts:1`.
+- `eslint/@typescript-eslint/no-unsafe-call` [diagnostic] [blocking]: 1 finding, `src/unsafe.ts:1`.
+- `eslint/@typescript-eslint/no-unsafe-member-access` [diagnostic] [blocking]: 1 finding, `src/unsafe.ts:1`.
+- `eslint/@typescript-eslint/no-unsafe-return` [diagnostic] [blocking]: 1 finding, `src/unsafe.ts:1`.
+- `python/nested-loop` [review] [advisory]: 1 finding, `src/loops.py:8`.
 
-## Review leads
+## Minor
 
-Verify these before editing. Major leads are advisory; critical leads also appear under gate blockers.
+None.
 
-- python/nested-loop: 1 (src/loops.py:8)
+## Info
 
-## Level and confidence
+None.
 
-| Level | High | Medium | Low |
+## Categories
+
+| Category | Critical | Major | Minor | Info | [blocking] | [advisory] |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| [diagnostic] | 0 | 4 | 0 | 0 | 4 | 0 |
+| [review] | 0 | 1 | 0 | 0 | 0 | 1 |
+
+## Source scope
+
+| Paths | Files | Critical | Major | Minor | Info |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Source | 3 | 0 | 5 | 0 | 0 |
+| Tests and fixtures | 0 | 0 | 0 | 0 | 0 |
+| Scripts and repository tooling | 0 | 0 | 0 | 0 | 0 |
+
+Path-based scope labels do not exempt files from checks. Source candidates rank before tests and tooling.
+
+## Severity and confidence
+
+| Severity | High | Medium | Low |
 | --- | ---: | ---: | ---: |
+| critical | 0 | 0 | 0 |
 | major | 5 | 0 | 0 |
+| minor | 0 | 0 | 0 |
+| info | 0 | 0 | 0 |
 
 Confidence measures the evidence behind a finding; it does not establish a defect.
 
 ## Files to inspect
 
-- src/unsafe.ts: 4 rules, 4 findings, 4 blockers
-- src/loops.py: 1 rule, 1 finding
+- src/unsafe.ts [source]: 4 rules; 0 critical, 4 major, 0 minor, 0 info.
+- src/loops.py [source]: 1 rule; 0 critical, 1 major, 0 minor, 0 info.
 
 ## Checks
 

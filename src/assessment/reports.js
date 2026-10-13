@@ -9,12 +9,13 @@ import { confidenceLevels, severityLevels } from '../domain/findings.js';
 import { sourceRole, sourceRoleRank } from '../project/source-scopes.js';
 
 const groupLabels = {
-  diagnostic: 'Analyzer diagnostics in selected sources',
-  policy: 'Sloppy policy findings in selected sources',
-  review: 'Review leads in selected sources',
-  dependency: 'Dependency advisories',
-  outsideScope: 'Findings outside selected sources',
+  diagnostic: 'diagnostic',
+  policy: 'policy',
+  review: 'review',
+  dependency: 'dependency',
+  outsideScope: 'outside-scope',
 };
+const displayLevels = [...severityLevels].reverse();
 
 function evidenceGroup(item) {
   if (item.kind === 'dependency') return 'dependency';
@@ -28,6 +29,27 @@ function counts(items) {
     errors: items.filter(item => item.severity === 'error').length,
     warnings: items.filter(item => item.severity === 'warning').length,
   };
+}
+
+function countsByLevel(items) {
+  return Object.fromEntries(severityLevels.map(level => [level, items.filter(item => item.level === level).length]));
+}
+
+function formatSeverityTotals(levels) {
+  return displayLevels.map(level => `${levels[level].toLocaleString('en-US')} ${level}`).join(', ');
+}
+
+export function formatReportSummary(report) {
+  const status = !report.complete ? 'INCOMPLETE' : report.passed ? 'PASS' : 'FAIL';
+  const total = Object.values(report.summary.levels).reduce((sum, count) => sum + count, 0);
+  return `${status}: ${countLabel(total, 'finding')}; ${formatSeverityTotals(report.summary.levels)}.`;
+}
+
+export function formatReportTags(report) {
+  const categories = Object.entries(groupLabels).filter(([group]) => report.summary.groups[group].total)
+    .map(([group, label]) => `[${label}] ${report.summary.groups[group].total.toLocaleString('en-US')}`);
+  const total = Object.values(report.summary.levels).reduce((sum, count) => sum + count, 0);
+  return `Tags: ${categories.length ? categories.join(', ') + '; ' : ''}[blocking] ${report.summary.gateErrors.toLocaleString('en-US')}, [advisory] ${(total - report.summary.gateErrors).toLocaleString('en-US')}.`;
 }
 
 export function gitRevision(root) {
@@ -62,7 +84,7 @@ export function buildReport(root, { config, files, checks, findings, revision = 
   const { errors, warnings, gateErrors } = counts(active);
   const groups = Object.fromEntries(Object.keys(groupLabels).map(group => [group, counts(active.filter(item => evidenceGroup(item) === group))]));
   const reviewLeads = active.filter(item => item.kind === 'review' && item.ownership === 'project').length;
-  const levels = Object.fromEntries(severityLevels.map(level => [level, active.filter(item => item.level === level).length]));
+  const levels = countsByLevel(active);
   const levelConfidence = Object.fromEntries(severityLevels.map(level => [level,
     Object.fromEntries(confidenceLevels.map(confidence => [confidence,
       active.filter(item => item.level === level && item.confidence === confidence).length]))]));
@@ -133,20 +155,24 @@ export function writeReport(report, directory) {
 function topRules(items, limit = 6) {
   const byRule = new Map();
   for (const item of items) {
-    if (!byRule.has(item.ruleId)) byRule.set(item.ruleId, []);
-    byRule.get(item.ruleId).push(item);
+    const tags = `[${item.kind}] [${item.blocksGate ? 'blocking' : 'advisory'}]${item.ownership !== 'project' && item.kind !== 'dependency' ? ' [outside-scope]' : ''}`;
+    const key = `${item.ruleId} ${tags}`;
+    if (!byRule.has(key)) byRule.set(key, { rule: item.ruleId, tags, findings: [] });
+    byRule.get(key).findings.push(item);
   }
-  return [...byRule].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
-    .slice(0, limit).map(([rule, findings]) => `- ${rule}: ${findings.length} (${findings[0].file}:${findings[0].line})`);
+  const groups = [...byRule.values()].sort((first, second) => second.findings.length - first.findings.length
+    || first.rule.localeCompare(second.rule) || first.tags.localeCompare(second.tags));
+  return [
+    ...groups.slice(0, limit).map(({ rule, tags, findings }) => `- \`${rule}\` ${tags}: ${countLabel(findings.length, 'finding')}, \`${findings[0].file}:${findings[0].line}\`.`),
+    ...(groups.length > limit ? [`${countLabel(groups.length - limit, 'more rule group')} in report.json.`] : []),
+  ];
 }
 
 function countLabel(count, singular) {
-  return `${count} ${singular}${count === 1 ? '' : 's'}`;
+  return `${count.toLocaleString('en-US')} ${singular}${count === 1 ? '' : 's'}`;
 }
 
 function markdownIntro(report) {
-  const status = !report.complete ? 'INCOMPLETE' : report.passed ? 'PASS' : 'FAIL';
-  const presentGroups = Object.entries(groupLabels).filter(([group]) => report.summary.groups[group].total);
   const baselineNote = !report.complete
     ? 'Counts may be partial until failed checks are rerun.'
     : report.summary.baselineConfigured
@@ -154,24 +180,32 @@ function markdownIntro(report) {
       : 'Counts cover all selected sources; no baseline is configured.';
   return [
     '# Sloppy report', '',
-    `Gate ${status}. ${countLabel(report.summary.files, 'file')}; ${countLabel(report.summary.gateErrors, 'blocker')}; ${countLabel(report.summary.reviewLeads, 'review lead')}; ${countLabel(report.summary.baseline, 'baseline finding')}.`,
+    formatReportSummary(report),
+    `${countLabel(report.summary.files, 'file')}; ${countLabel(report.summary.baseline, 'baseline finding')}.`,
     report.revision ? `Git ${report.revision.commit.slice(0, 12)}${report.revision.dirty === true ? ' + uncommitted changes' : report.revision.dirty === null ? ' (worktree state unknown)' : ''}.` : 'Git revision unavailable.',
     baselineNote,
-    'Counts are findings under Sloppy\'s configured checks, not confirmed defects. Repository lint, typecheck, and tests were not run.', '',
-    '## Evidence', '',
-    ...(presentGroups.length ? ['| Source | Blockers | Other findings |', '| --- | ---: | ---: |',
+    'Severities follow configured rule levels, not confirmed defect risk. Counts include advisory findings. Repository lint, typecheck, and tests were not run.',
+    'Tags describe the category and gate status. [review] findings need verification before editing. [blocking] findings fail the gate; [advisory] findings do not.', '',
+  ];
+}
+
+function markdownCategories(report, active) {
+  const presentGroups = Object.entries(groupLabels).filter(([group]) => report.summary.groups[group].total);
+  return [
+    '## Categories', '',
+    ...(presentGroups.length ? ['| Category | Critical | Major | Minor | Info | [blocking] | [advisory] |', '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
       ...presentGroups.map(([group, label]) => {
+        const levels = countsByLevel(active.filter(item => evidenceGroup(item) === group));
         const { total, gateErrors } = report.summary.groups[group];
-        return `| ${label} | ${gateErrors} | ${total - gateErrors} |`;
+        return `| [${label}] | ${displayLevels.map(level => levels[level]).join(' | ')} | ${gateErrors} | ${total - gateErrors} |`;
       })] : ['No findings.']), '',
     '## Source scope', '',
-    '| Paths | Files | Blockers | Other findings |', '| --- | ---: | ---: | ---: |',
+    '| Paths | Files | Critical | Major | Minor | Info |', '| --- | ---: | ---: | ---: | ---: | ---: |',
     ...Object.entries({ source: 'Source', test: 'Tests and fixtures', tooling: 'Scripts and repository tooling' }).map(([role, label]) => {
-      const group = report.summary.sourceGroups[role];
-      return `| ${label} | ${group.files} | ${group.gateErrors} | ${group.total - group.gateErrors} |`;
+      const levels = countsByLevel(active.filter(item => item.ownership === 'project' && sourceRole(item.file) === role));
+      return `| ${label} | ${report.summary.sourceGroups[role].files} | ${displayLevels.map(level => levels[level]).join(' | ')} |`;
     }), '',
     'Path-based scope labels do not exempt files from checks. Source candidates rank before tests and tooling.', '',
-    '## Gate blockers', '',
   ];
 }
 
@@ -193,22 +227,21 @@ function markdownChecks(checks) {
   return lines;
 }
 
-function writeMarkdownReport(report, directory) {
+export function writeMarkdownReport(report, directory) {
+  fs.mkdirSync(directory, { recursive: true });
   const active = report.findings.filter(item => !item.baseline);
-  const blockers = active.filter(item => item.blocksGate);
-  const review = active.filter(item => item.kind === 'review' && item.ownership === 'project');
   const lines = markdownIntro(report);
-  if (blockers.length) {
-    lines.push(...topRules(blockers), '');
-  } else lines.push('None.', '');
-  if (review.length) {
-    lines.push('## Review leads', '', 'Verify these before editing. Major leads are advisory; critical leads also appear under gate blockers.', '', ...topRules(review), '');
+  for (const level of displayLevels) {
+    const findings = active.filter(item => item.level === level);
+    lines.push(`## ${level[0].toUpperCase()}${level.slice(1)}`, '',
+      ...(findings.length ? topRules(findings) : ['None.']), '');
   }
-  if (active.length) lines.push('## Level and confidence', '', '| Level | High | Medium | Low |', '| --- | ---: | ---: | ---: |',
-    ...severityLevels.filter(level => report.summary.levels[level]).map(level => `| ${level} | ${confidenceLevels.map(confidence => report.summary.levelConfidence[level][confidence]).join(' | ')} |`),
+  lines.push(...markdownCategories(report, active));
+  if (active.length) lines.push('## Severity and confidence', '', '| Severity | High | Medium | Low |', '| --- | ---: | ---: | ---: |',
+    ...displayLevels.map(level => `| ${level} | ${confidenceLevels.map(confidence => report.summary.levelConfidence[level][confidence]).join(' | ')} |`),
     '', 'Confidence measures the evidence behind a finding; it does not establish a defect.', '');
   lines.push('## Files to inspect', '',
-    ...report.hotspots.slice(0, 5).map(item => `- ${item.file} [${item.sourceRole}]: ${countLabel(item.rules.length, 'rule')}, ${countLabel(item.findings, 'finding')}${item.gateErrors ? `, ${countLabel(item.gateErrors, 'blocker')}` : ''}`),
+    ...report.hotspots.slice(0, 5).map(item => `- ${item.file} [${item.sourceRole}]: ${countLabel(item.rules.length, 'rule')}; ${formatSeverityTotals(countsByLevel(active.filter(finding => finding.file === item.file && finding.ownership === 'project' && finding.kind !== 'dependency' && finding.confidence !== 'low')))}.`),
     ...(report.hotspots.length ? [] : ['No high- or medium-confidence project findings.']), '',
     '## Checks', '', ...markdownChecks(report.checks));
   if (report.staleBaseline.length) lines.push(`Stale baseline entries: ${report.staleBaseline.reduce((n, entry) => n + entry.count, 0)}. Review before regenerating.`, '');

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { run } from "../runtime/processes.js";
 import { CONFIG, defaults } from "../project/policies.js";
 import { check } from "../assessment/assess-project.js";
+import { formatReportSummary, formatReportTags } from '../assessment/reports.js';
 
 export function installDefaultHook() {
   const directory = fileURLToPath(new URL('../../hooks', import.meta.url));
@@ -64,8 +65,7 @@ async function assessWorktree(root, mode) {
     report = await check(root, output, configPath);
   }
   catch (error) { console.error(`sloppy (${mode}): INCOMPLETE: ${error.message}`); return mode === 'enforce' ? 2 : 0; }
-  const status = report.complete ? report.passed ? 'PASS' : 'FAIL' : 'INCOMPLETE';
-  console.error(`sloppy (${mode}): ${status}; ${report.summary.gateErrors} gate blockers, ${report.summary.reviewLeads} review leads; ${report.summary.baselineConfigured ? 'baseline configured' : 'no baseline configured'}. Report: ${path.join(output, 'report.md')}`);
+  console.error(`sloppy (${mode}): ${formatReportSummary(report)} ${formatReportTags(report)} ${report.summary.baselineConfigured ? 'Baseline configured' : 'No baseline configured'}. Report: ${path.join(output, 'report.md')}`);
   if (mode !== 'enforce') return 0;
   if (!report.complete) return 2;
   return report.passed ? 0 : 1;
