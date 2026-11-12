@@ -2,6 +2,7 @@
 
 FAIL: 5 findings; 0 critical, 5 major, 0 minor, 0 info.
 3 files; 0 baseline findings.
+Mode deep: 5 findings surfaced, 0 findings hidden.
 Git revision unavailable.
 Counts cover all selected sources; no baseline is configured.
 Severities follow configured rule levels, not confirmed defect risk. Counts include advisory findings. Repository lint, typecheck, and tests were not run.

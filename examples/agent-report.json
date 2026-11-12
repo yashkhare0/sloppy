@@ -10,6 +10,7 @@
     "javascript": false
   },
   "configFile": ".sloppy.json",
+  "mode": "deep",
   "toolVersions": {
     "cli": "1.0.0",
     "node": "v24.19.0",
@@ -111,7 +112,10 @@
         "errors": 0,
         "warnings": 0
       }
-    }
+    },
+    "totalFindings": 5,
+    "surfacedFindings": 5,
+    "hiddenFindings": 0
   },
   "hotspots": [
     {
