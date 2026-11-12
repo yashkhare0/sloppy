@@ -67,4 +67,4 @@ Confidence measures the evidence behind a finding; it does not establish a defec
 - Skipped (No applicable files): javascript-lint
 - Completed (4): typescript-structure, python-structure, typescript-lint, typescript-types.
 
-Full findings and guidance: report.json. File-grouped context and dependency advisories: repair-plan.json.
+Findings for the selected mode: report.json. Use deep mode for low-confidence findings. File-grouped context and dependency advisories: repair-plan.json.
