@@ -9,19 +9,21 @@ import { pythonTypes } from '../analysis/python/type-checking.js';
 import { unusedPython } from '../analysis/python/unused-code.js';
 import { pythonCoverage } from '../analysis/python/coverage.js';
 import { pythonDependencyAudit } from '../analysis/python/dependency-audit.js';
-import { buildReport, gitRevision, writeReport } from "./reports.js";
+import { buildReport, gitRevision, validateReportMode, writeReport } from "./reports.js";
 import { assessOrganization } from '../project/organization.js';
 
 export async function check(root, output, configPath, overrides = {}) {
+  const { mode = 'default', ...checkOverrides } = overrides;
+  validateReportMode(mode);
   const revision = gitRevision(root);
   let config;
   try {
     config = load(root, configPath);
-    applyPythonCheckOverrides(config, overrides, root);
+    applyPythonCheckOverrides(config, checkOverrides, root);
   }
   catch (error) {
     const report = buildReport(root, { config: { project: {}, baseline: null }, files: [],
-      checks: [{ name: 'configuration', status: 'failed', detail: error.message }], findings: [], revision });
+      checks: [{ name: 'configuration', status: 'failed', detail: error.message }], findings: [], revision, mode });
     if (configPath) report.configFile = configPath;
     writeReport(report, output);
     return report;
@@ -37,7 +39,7 @@ export async function check(root, output, configPath, overrides = {}) {
     dependencyGraph.nodes = [...new Set([...scriptFiles, ...dependencyGraph.edges.map(e => e.target)])].sort();
     const report = buildReport(root, { config: { ...config, baseline: null }, files,
       checks: [...checks, { name, status: 'failed', detail: 'Assessment interrupted before this engine completed; rerun required.' }],
-      findings: [...findings, ...partial], revision });
+      findings: [...findings, ...partial], revision, mode });
     report.dependencyGraph = dependencyGraph;
     if (configPath) report.configFile = configPath;
     writeReport(report, output);
@@ -65,10 +67,10 @@ export async function check(root, output, configPath, overrides = {}) {
   await engine('python-types', config.checks.pythonTypes, py.length > 0, () => pythonTypes(root, py, config));
   if (!files.length) checks.push({ name: 'source-discovery', status: 'failed', detail: 'No matching source files; review include/exclude patterns.' });
   let report;
-  try { report = buildReport(root, { config, files, checks, findings, revision }); }
+  try { report = buildReport(root, { config, files, checks, findings, revision, mode }); }
   catch (error) {
     checks.push({ name: 'baseline', status: 'failed', detail: error.message });
-    report = buildReport(root, { config: { ...config, baseline: null }, files, checks, findings, revision });
+    report = buildReport(root, { config: { ...config, baseline: null }, files, checks, findings, revision, mode });
   }
   dependencyGraph.nodes = [...new Set([...scriptFiles, ...dependencyGraph.edges.map(e => e.target)])].sort();
   report.dependencyGraph = dependencyGraph;

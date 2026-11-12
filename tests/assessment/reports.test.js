@@ -33,7 +33,7 @@ test('reports lead with severity totals and tag categories without changing JSON
     issue('structure/file', 'minor', 'tests/main.test.ts'),
     issue('eslint/directive', 'minor', 'generated/client.ts'),
     issue('maintainability/duplicate-body', 'info', 'scripts/build.js'),
-  ]);
+  ], { mode: 'deep' });
   assert.equal(formatReportSummary(report), 'FAIL: 8 findings; 2 critical, 3 major, 2 minor, 1 info.');
   assert.equal(report.summary.gateErrors, 4);
   assert.equal(formatReportTags(report), 'Tags: [diagnostic] 1, [policy] 2, [review] 2, [dependency] 1, [outside-scope] 2; [blocking] 4, [advisory] 4.');
@@ -58,6 +58,32 @@ test('reports lead with severity totals and tag categories without changing JSON
   assert.doesNotMatch(markdown, /## Gate blockers|## Review leads|\| Blockers \|/);
   assert.equal(JSON.stringify(report), before);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(output, 'report.json'), 'utf8')), report);
+});
+
+test('report modes filter details but retain complete assessment totals', context => {
+  const { root } = fixture(context);
+  const input = () => [
+    issue('python/fat-activity', 'critical'),
+    issue('eslint/no-debugger', 'major'),
+    issue('maintainability/duplicate-body', 'info'),
+  ];
+  const base = {
+    config: { project: {}, exclude: [] },
+    files: ['src/main.ts'],
+    checks: [{ name: 'structure', status: 'completed' }],
+  };
+  const defaultReport = buildReport(root, { ...base, findings: input(), mode: 'default' });
+  const criticalReport = buildReport(root, { ...base, findings: input(), mode: 'critical' });
+  const deepReport = buildReport(root, { ...base, findings: input(), mode: 'deep' });
+
+  assert.deepEqual(defaultReport.findings.map(item => item.ruleId), ['eslint/no-debugger', 'python/fat-activity']);
+  assert.equal(defaultReport.summary.totalFindings, 3);
+  assert.equal(defaultReport.summary.surfacedFindings, 2);
+  assert.equal(defaultReport.summary.hiddenFindings, 1);
+  assert.equal(defaultReport.passed, criticalReport.passed);
+  assert.deepEqual(criticalReport.findings.map(item => item.ruleId), ['python/fat-activity']);
+  assert.equal(deepReport.findings.length, 3);
+  assert.equal(deepReport.summary.hiddenFindings, 0);
 });
 
 test('major advisory findings count in severity totals without failing the gate', context => {

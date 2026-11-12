@@ -2,6 +2,7 @@
 
 FAIL: 5 findings; 0 critical, 5 major, 0 minor, 0 info.
 3 files; 0 baseline findings.
+Mode deep: 5 findings surfaced, 0 findings hidden.
 Git revision unavailable.
 Counts cover all selected sources; no baseline is configured.
 Severities follow configured rule levels, not confirmed defect risk. Counts include advisory findings. Repository lint, typecheck, and tests were not run.
@@ -66,4 +67,4 @@ Confidence measures the evidence behind a finding; it does not establish a defec
 - Skipped (No applicable files): javascript-lint
 - Completed (4): typescript-structure, python-structure, typescript-lint, typescript-types.
 
-Full findings and guidance: report.json. File-grouped context and dependency advisories: repair-plan.json.
+Findings for the selected mode: report.json. Use deep mode for low-confidence findings. File-grouped context and dependency advisories: repair-plan.json.

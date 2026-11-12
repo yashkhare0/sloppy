@@ -16,6 +16,12 @@ const groupLabels = {
   outsideScope: 'outside-scope',
 };
 const displayLevels = [...severityLevels].reverse();
+export const REPORT_MODES = Object.freeze(['default', 'critical', 'deep']);
+
+export function validateReportMode(mode) {
+  if (!REPORT_MODES.includes(mode)) throw new Error(`Invalid report mode '${mode}'; choose ${REPORT_MODES.join(', ')}`);
+  return mode;
+}
 
 function evidenceGroup(item) {
   if (item.kind === 'dependency') return 'dependency';
@@ -33,6 +39,12 @@ function counts(items) {
 
 function countsByLevel(items) {
   return Object.fromEntries(severityLevels.map(level => [level, items.filter(item => item.level === level).length]));
+}
+
+function countsByLevelAndConfidence(items) {
+  return Object.fromEntries(severityLevels.map(level => [level,
+    Object.fromEntries(confidenceLevels.map(confidence => [confidence,
+      items.filter(item => item.level === level && item.confidence === confidence).length]))]));
 }
 
 function formatSeverityTotals(levels) {
@@ -76,18 +88,19 @@ function rankHotspots(findings) {
     || b.findings - a.findings || a.file.localeCompare(b.file)).slice(0, 10);
 }
 
-export function buildReport(root, { config, files, checks, findings, revision = null }) {
+export function buildReport(root, { config, files, checks, findings, revision = null, mode = 'default' }) {
+  validateReportMode(mode);
   for (const item of findings) item.ownership = item.file.startsWith('../') || /(^|\/)node_modules\//.test(item.file) ? 'dependency' : matches(item.file, config.exclude ?? []) ? 'excluded' : 'project';
   findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column || a.ruleId.localeCompare(b.ruleId));
   const staleBaseline = applyBaseline(root, config, findings);
   const active = findings.filter(item => !item.baseline);
+  const surfacedActive = active.filter(item => includeFinding(item, mode));
+  const surfaced = findings.filter(item => includeFinding(item, mode));
   const { errors, warnings, gateErrors } = counts(active);
   const groups = Object.fromEntries(Object.keys(groupLabels).map(group => [group, counts(active.filter(item => evidenceGroup(item) === group))]));
   const reviewLeads = active.filter(item => item.kind === 'review' && item.ownership === 'project').length;
   const levels = countsByLevel(active);
-  const levelConfidence = Object.fromEntries(severityLevels.map(level => [level,
-    Object.fromEntries(confidenceLevels.map(confidence => [confidence,
-      active.filter(item => item.level === level && item.confidence === confidence).length]))]));
+  const levelConfidence = countsByLevelAndConfidence(active);
   const complete = checks.every(c => c.status !== 'failed') && files.length > 0;
   const sourceGroups = Object.fromEntries(Object.keys(sourceRoleRank).map(role => [role, {
     files: files.filter(file => sourceRole(file) === role).length,
@@ -95,13 +108,15 @@ export function buildReport(root, { config, files, checks, findings, revision = 
   }]));
   return {
     version: 1, root, project: config.project, configFile: '.sloppy.json', toolVersions: versions,
+    mode,
     revision,
     complete, passed: complete && gateErrors === 0,
     repositoryChecks: 'not-run',
     summary: { files: files.length, errors, warnings, gateErrors, reviewLeads, levels, levelConfidence, groups,
-      baseline: findings.filter(f => f.baseline).length, baselineConfigured: Boolean(config.baseline), sourceGroups },
-    hotspots: rankHotspots(active),
-    checks, findings, staleBaseline,
+      baseline: findings.filter(f => f.baseline).length, baselineConfigured: Boolean(config.baseline), sourceGroups,
+      totalFindings: active.length, surfacedFindings: surfacedActive.length, hiddenFindings: active.length - surfacedActive.length },
+    hotspots: rankHotspots(surfacedActive),
+    checks, findings: surfaced, staleBaseline,
     moduleMap: files.map(file => ({ file, owners: config.organization ? moduleOwners(file, config.organization).map(owner => owner.name) : [] })),
     reviewOnly: [
       'JavaScript receives structural analysis and linting, not TypeScript type checking. Passing static checks does not certify production readiness or runtime correctness.',
@@ -143,6 +158,7 @@ export function writeReport(report, directory) {
       || a.file.localeCompare(b.file);
   });
   fs.writeFileSync(path.join(directory, 'repair-plan.json'), JSON.stringify({ version: 1, root: report.root,
+    ...(report.mode ? { mode: report.mode, surfacedFindings: report.summary.surfacedFindings, hiddenFindings: report.summary.hiddenFindings } : {}),
     complete: report.complete, blockers: report.checks.filter(c => c.status === 'failed'),
     instructions: 'Resolve failed checks first. Compare diagnostics with repository checks; verify review leads before editing. Tasks distinguish source, test/fixture, and tooling paths without changing their gate status. Do not remove defensive guards solely because compiler options omit unchecked-index safety. Check source hashes before changes and rerun the assessment afterward.',
     dependencyFindings: report.findings.filter(f => !f.baseline && f.kind === 'dependency'),
@@ -173,6 +189,7 @@ function countLabel(count, singular) {
 }
 
 function markdownIntro(report) {
+  const modeLine = report.mode ? `Mode ${report.mode}: ${countLabel(report.summary.surfacedFindings, 'finding')} surfaced, ${countLabel(report.summary.hiddenFindings, 'finding')} hidden.` : null;
   const baselineNote = !report.complete
     ? 'Counts may be partial until failed checks are rerun.'
     : report.summary.baselineConfigured
@@ -182,6 +199,8 @@ function markdownIntro(report) {
     '# Sloppy report', '',
     formatReportSummary(report),
     `${countLabel(report.summary.files, 'file')}; ${countLabel(report.summary.baseline, 'baseline finding')}.`,
+    ...(modeLine ? [modeLine] : []),
+    ...(report.mode && report.summary.hiddenFindings ? ['Use `sloppy check --mode deep` to inspect every finding.'] : []),
     report.revision ? `Git ${report.revision.commit.slice(0, 12)}${report.revision.dirty === true ? ' + uncommitted changes' : report.revision.dirty === null ? ' (worktree state unknown)' : ''}.` : 'Git revision unavailable.',
     baselineNote,
     'Severities follow configured rule levels, not confirmed defect risk. Counts include advisory findings. Repository lint, typecheck, and tests were not run.',
@@ -190,13 +209,15 @@ function markdownIntro(report) {
 }
 
 function markdownCategories(report, active) {
-  const presentGroups = Object.entries(groupLabels).filter(([group]) => report.summary.groups[group].total);
+  const presentGroups = Object.entries(groupLabels)
+    .map(([group, label]) => [group, label, counts(active.filter(item => evidenceGroup(item) === group))])
+    .filter(([, , summary]) => summary.total);
   return [
     '## Categories', '',
     ...(presentGroups.length ? ['| Category | Critical | Major | Minor | Info | [blocking] | [advisory] |', '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
-      ...presentGroups.map(([group, label]) => {
+      ...presentGroups.map(([group, label, summary]) => {
         const levels = countsByLevel(active.filter(item => evidenceGroup(item) === group));
-        const { total, gateErrors } = report.summary.groups[group];
+        const { total, gateErrors } = summary;
         return `| [${label}] | ${displayLevels.map(level => levels[level]).join(' | ')} | ${gateErrors} | ${total - gateErrors} |`;
       })] : ['No findings.']), '',
     '## Source scope', '',
@@ -223,7 +244,7 @@ function markdownChecks(checks) {
   }
   for (const [reason, names] of skippedByReason) lines.push(`- Skipped (${reason}): ${names.join(', ')}`);
   lines.push(`- Completed (${completed.length}): ${completed.map(check => check.name).join(', ') || 'none'}.`, '',
-    'Full findings and guidance: report.json. File-grouped context and dependency advisories: repair-plan.json.', '');
+    'Findings for the selected mode: report.json. Use deep mode for low-confidence findings. File-grouped context and dependency advisories: repair-plan.json.', '');
   return lines;
 }
 
@@ -237,15 +258,24 @@ export function writeMarkdownReport(report, directory) {
       ...(findings.length ? topRules(findings) : ['None.']), '');
   }
   lines.push(...markdownCategories(report, active));
-  if (active.length) lines.push('## Severity and confidence', '', '| Severity | High | Medium | Low |', '| --- | ---: | ---: | ---: |',
-    ...displayLevels.map(level => `| ${level} | ${confidenceLevels.map(confidence => report.summary.levelConfidence[level][confidence]).join(' | ')} |`),
-    '', 'Confidence measures the evidence behind a finding; it does not establish a defect.', '');
+  if (active.length) {
+    const levelConfidence = countsByLevelAndConfidence(active);
+    lines.push('## Severity and confidence', '', '| Severity | High | Medium | Low |', '| --- | ---: | ---: | ---: |',
+      ...displayLevels.map(level => `| ${level} | ${confidenceLevels.map(confidence => levelConfidence[level][confidence]).join(' | ')} |`),
+      '', 'Confidence measures the evidence behind a finding; it does not establish a defect.', '');
+  }
   lines.push('## Files to inspect', '',
     ...report.hotspots.slice(0, 5).map(item => `- ${item.file} [${item.sourceRole}]: ${countLabel(item.rules.length, 'rule')}; ${formatSeverityTotals(countsByLevel(active.filter(finding => finding.file === item.file && finding.ownership === 'project' && finding.kind !== 'dependency' && finding.confidence !== 'low')))}.`),
     ...(report.hotspots.length ? [] : ['No high- or medium-confidence project findings.']), '',
     '## Checks', '', ...markdownChecks(report.checks));
   if (report.staleBaseline.length) lines.push(`Stale baseline entries: ${report.staleBaseline.reduce((n, entry) => n + entry.count, 0)}. Review before regenerating.`, '');
   fs.writeFileSync(path.join(directory, 'report.md'), lines.join('\n'));
+}
+
+function includeFinding(item, mode) {
+  if (mode === 'deep') return true;
+  if (mode === 'critical') return item.level === 'critical';
+  return item.confidence !== 'low';
 }
 
 function applyBaseline(root, config, findings) {

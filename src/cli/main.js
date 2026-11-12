@@ -4,7 +4,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { CONFIG, defaults, load } from "../project/policies.js";
 import { check } from "../assessment/assess-project.js";
-import { formatReportSummary, formatReportTags } from '../assessment/reports.js';
+import { formatReportSummary, formatReportTags, validateReportMode } from '../assessment/reports.js';
 import { installHook } from "../git/repository-hooks.js";
 import { installDefaultHook, runDefaultHook } from "../git/commit-checks.js";
 
@@ -12,11 +12,11 @@ async function main() {
   const { positionals, values } = parseArgs({ allowPositionals: true, options: {
     root: { type: 'string' }, config: { type: 'string' }, out: { type: 'string' }, hook: { type: 'boolean' },
     'coverage-report': { type: 'string' }, 'python-dependency-audit': { type: 'boolean' },
-    severity: { type: 'string', multiple: true }, help: { type: 'boolean', short: 'h' },
+    severity: { type: 'string', multiple: true }, mode: { type: 'string' }, help: { type: 'boolean', short: 'h' },
   } });
   const command = positionals[0];
   if (values.help || !command) {
-    console.log('sloppy init [--root PATH] [--hook]\nsloppy check [--root PATH] [--config PATH] [--out PATH] [--coverage-report PATH] [--python-dependency-audit] [--severity RULE=LEVEL (info|minor|major|critical)]\nsloppy baseline [--root PATH]\nsloppy hook [--root PATH]\nsloppy default-hook\nsloppy doctor'); return;
+    console.log('sloppy init [--root PATH] [--hook]\nsloppy check [--root PATH] [--config PATH] [--out PATH] [--coverage-report PATH] [--python-dependency-audit] [--severity RULE=LEVEL (info|minor|major|critical)] [--mode default|critical|deep]\nsloppy baseline [--root PATH]\nsloppy hook [--root PATH]\nsloppy default-hook\nsloppy doctor'); return;
   }
   validateArguments(positionals, values, command);
   const root = path.resolve(values.root ?? process.cwd());
@@ -43,10 +43,12 @@ function initialize(root, values) {
     if (values.hook) console.log(`Installed ${installHook(root)}`);
 }
 async function assess(root, output, values, command) {
+    const mode = command === 'baseline' ? 'deep' : (values.mode ?? 'default');
     const report = await check(root, output, values.config ? path.resolve(values.config) : undefined, {
       coverageReport: values['coverage-report'],
       pythonDependencyAudit: values['python-dependency-audit'],
       severities: values.severity,
+      mode,
     });
     if (command === 'baseline') {
       if (!report.complete) throw new Error('Cannot baseline an incomplete assessment; resolve tool failures first');
@@ -58,6 +60,7 @@ async function assess(root, output, values, command) {
     } else {
       console.log(formatReportSummary(report));
       console.log(formatReportTags(report));
+      console.log(`Mode ${report.mode}: ${report.summary.surfacedFindings} findings surfaced, ${report.summary.hiddenFindings} hidden.`);
       console.log(`${report.summary.files} files, ${report.summary.baseline} baseline findings; ${report.summary.baselineConfigured ? 'baseline configured' : 'no baseline configured'}`);
       console.log(`Report: ${path.join(output, 'report.md')}\nJSON: ${path.join(output, 'report.json')}`);
       for (const c of report.checks.filter(c => c.status === 'failed')) console.error(`${c.name}: ${c.detail}`);
@@ -88,6 +91,7 @@ function validateArguments(positionals, values, command) {
     { option: '--coverage-report', enabled: values['coverage-report'], commands: ['check'] },
     { option: '--python-dependency-audit', enabled: values['python-dependency-audit'], commands: ['check'] },
     { option: '--severity', enabled: values.severity?.length, commands: ['check'] },
+    { option: '--mode', enabled: values.mode, commands: ['check'] },
   ];
   for (const restriction of restrictions) {
     if (restriction.enabled && !restriction.commands.includes(command)) {
@@ -95,4 +99,5 @@ function validateArguments(positionals, values, command) {
       throw new Error(`${restriction.option} is only valid with ${commands}`);
     }
   }
+  if (values.mode !== undefined) validateReportMode(values.mode);
 }

@@ -10,4 +10,6 @@ Default limits and naming/state ownership policy were agreed with the user befor
 
 The orchestration layer reuses TypeScript, ESLint/typescript-eslint, official React/Next lint plugins, Ruff, and Pyright. Custom analysis is restricted to the agreed structural metrics, filename conventions, explicit dependency boundaries, simple static accessibility attributes, and report/baseline handling.
 
+Reports support `default`, `critical`, and `deep` modes. Default omits low-confidence review candidates, critical includes only critical-level findings, and deep includes every finding. Modes filter report details, while assessment checks, complete severity totals, baseline capture, and gate status continue to use the full finding set.
+
 Global installation exposes `sloppy`. Repository hooks preserve existing hooks and invoke the full working-tree assessment. The optional default-hook command installs a global advisory dispatcher; it resolves the active worktree and stores separate reports and automatic configs. The report provides source locations, measurements, rule IDs, and repair guidance for behavior-preserving fixes followed by a fresh assessment.
