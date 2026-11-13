@@ -6,6 +6,6 @@ __pycache__/
 .ruff_cache/
 .code-quality/
 .code-quality.json
-hooks/
+/hooks/
 dashboard/dist/
 .impeccable/
