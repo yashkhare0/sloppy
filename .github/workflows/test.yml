@@ -19,3 +19,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm check
+      - run: pnpm build
+      - name: Upload assessment diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assessment-diagnostics
+          path: .sloppy/report.*
+          if-no-files-found: ignore
+          include-hidden-files: true

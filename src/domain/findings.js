@@ -3,6 +3,17 @@ import crypto from 'node:crypto';
 export const severityLevels = Object.freeze(['info', 'minor', 'major', 'critical']);
 export const confidenceLevels = Object.freeze(['high', 'medium', 'low']);
 
+export function normalizeReportFinding(item) {
+  return {
+    ...item,
+    level: severityLevels.includes(item.level) ? item.level : item.severity === 'error' ? 'major' : 'minor',
+    kind: typeof item.kind === 'string' ? item.kind : 'diagnostic',
+    confidence: typeof item.confidence === 'string' ? item.confidence : null,
+    blocksGate: typeof item.blocksGate === 'boolean' ? item.blocksGate : item.severity === 'error',
+    ownership: typeof item.ownership === 'string' ? item.ownership : item.file.startsWith('../') || /(^|\/)node_modules\//.test(item.file) ? 'dependency' : 'project',
+  };
+}
+
 const lowConfidenceRules = new Set([
   'python/unused-definition', 'python/inline-prompt',
   'dead-code/unreachable-module-candidate',
