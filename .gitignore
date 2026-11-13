@@ -7,3 +7,5 @@ __pycache__/
 .code-quality/
 .code-quality.json
 hooks/
+dashboard/dist/
+.impeccable/

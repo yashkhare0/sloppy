@@ -5,7 +5,14 @@
   "packageManager": "pnpm@10.33.2",
   "type": "module",
   "bin": { "sloppy": "src/cli/main.js" },
-  "scripts": { "test": "node --test", "check": "node src/cli/main.js check" },
+  "scripts": {
+    "test": "node --test",
+    "check": "node src/cli/main.js check",
+    "dev": "pnpm --dir dashboard dev",
+    "build": "pnpm --dir dashboard build",
+    "typecheck": "pnpm --dir dashboard typecheck",
+    "dashboard": "node src/cli/main.js dashboard"
+  },
   "engines": { "node": "^22.13.0 || >=24.0.0" },
   "dependencies": {
     "typescript": "^5.9.3",

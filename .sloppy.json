@@ -1,12 +1,12 @@
 {
   "version": 1,
   "project": {
-    "typescript": false,
+    "typescript": true,
     "javascript": true,
     "python": true,
-    "react": false,
+    "react": true,
     "next": false,
-    "shadcn": false
+    "shadcn": true
   },
   "include": [
     "**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,py}"
@@ -81,6 +81,18 @@
           160
         ]
       }
+    },
+    {
+      "files": [
+        "dashboard/src/components/ui/sidebar.tsx"
+      ],
+      "reason": "Keep the upstream shadcn sidebar composition together while retaining correctness and type checks.",
+      "limits": {
+        "file": [
+          700,
+          950
+        ]
+      }
     }
   ],
   "naming": {
@@ -105,8 +117,8 @@
   ],
   "checks": {
     "javascriptLint": true,
-    "typescriptLint": false,
-    "typescriptTypes": false,
+    "typescriptLint": true,
+    "typescriptTypes": true,
     "pythonLint": true,
     "pythonTypes": true,
     "pythonUnusedCode": true,
@@ -115,7 +127,7 @@
   },
   "typescript": {
     "projects": [
-      "tsconfig.json"
+      "dashboard/tsconfig.json"
     ],
     "requiredOptions": [
       "strict",
@@ -168,7 +180,8 @@
   },
   "organization": {
     "sourceRoots": [
-      "src"
+      "src",
+      "dashboard/src"
     ],
     "forbiddenNames": [
       "helpers",
@@ -178,7 +191,8 @@
       "types"
     ],
     "compositionRoots": [
-      "src/cli/**"
+      "src/cli/**",
+      "dashboard/src/main.tsx"
     ],
     "rootFileWarning": 8,
     "requireOwnership": true,
@@ -246,6 +260,17 @@
         ],
         "tests": [
           "tests/git/**"
+        ]
+      },
+      {
+        "name": "dashboard",
+        "sources": [
+          "src/dashboard/**",
+          "dashboard/src/**",
+          "dashboard/vite.config.js"
+        ],
+        "tests": [
+          "tests/dashboard/**"
         ]
       }
     ]

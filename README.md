@@ -34,6 +34,23 @@ sloppy check
 
 Per-repository installation leaves machine-wide Git settings unchanged. `sloppy default-hook` explicitly installs the optional machine-wide advisory dispatcher described below.
 
+## Project dashboard
+
+Build and open the local dashboard from the Sloppy checkout:
+
+```powershell
+pnpm build
+sloppy dashboard
+```
+
+Open `http://127.0.0.1:4173`. The compact shadcn dashboard has a project sidebar and an overview with portfolio stats, severity totals and finding-category breakdowns. Each project has Findings, Analytics and Checks tabs, with Markdown and JSON links in the toolbar. Findings and checks use compact data tables; finding sorts apply across the full surfaced report before pagination. Analytics use full saved-report totals, including findings hidden by report mode. Reports reload every 30 seconds; Refresh reloads them immediately. It does not run assessments.
+
+Checks register report paths under `~/.sloppy/projects`, including custom `--out` destinations and Git hook reports. Registration keeps private immutable JSON/Markdown bundles under `~/.sloppy/projects/reports`, selecting the newest captured file time for each project. Both formats come from one captured report, so overlapping checks cannot mix versions. The dashboard reads these snapshots even after temporary output is removed. Superseded bundles are pruned after a five-minute reader grace period; source report files are preserved. On startup the dashboard also discovers existing reports under your home directory, including Git and agent worktrees. Registered projects load immediately while discovery runs in the background. It skips symlinks, system/media directories, dependency folders, build output, and hidden folders other than `.sloppy` and worktree metadata. Unreadable folders and missing source folders are identified in the UI. `sloppy dashboard --root PATH` changes the discovery folder; the catalog still includes previously registered projects. `--port PORT` changes the local port. Set `SLOPPY_HOME` to use a different catalog directory.
+
+Gate status comes from the saved assessment. Major advisory findings can coexist with a passing gate. Severity totals include findings hidden by the report mode; the detail list contains only the surfaced, unbaselined findings. "Report saved" is the file modification time, not an assessment timestamp or proof that the working tree still matches the report.
+
+Use `pnpm dev` for frontend development and `pnpm typecheck` for the dashboard's TypeScript check. The dashboard binds to loopback and serves reports locally.
+
 ## Reports and exit codes
 
 Each check writes a short, grouped `.sloppy/report.md` and a mode-filtered `.sloppy/report.json`. Use `--out PATH` to change the destination and `--mode` to choose how much finding detail the reports include:

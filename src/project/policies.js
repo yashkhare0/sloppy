@@ -181,6 +181,8 @@ function validatePolicyFlags(c) {
   validateProject(c.project);
 }
 function validateProject(project) {
+  // Older configurations recorded the unused Electron detector as disabled.
+  if (project?.electron === false) delete project.electron;
   const required = ['typescript', 'python', 'react', 'next', 'shadcn'];
   validateFlags(project, [...required, 'javascript'], 'project', true);
   for (const key of required) if (!(key in project)) throw new Error('project is missing a required flag');

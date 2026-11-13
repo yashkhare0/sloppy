@@ -13,10 +13,11 @@ async function main() {
     root: { type: 'string' }, config: { type: 'string' }, out: { type: 'string' }, hook: { type: 'boolean' },
     'coverage-report': { type: 'string' }, 'python-dependency-audit': { type: 'boolean' },
     severity: { type: 'string', multiple: true }, mode: { type: 'string' }, help: { type: 'boolean', short: 'h' },
+    port: { type: 'string' },
   } });
   const command = positionals[0];
   if (values.help || !command) {
-    console.log('sloppy init [--root PATH] [--hook]\nsloppy check [--root PATH] [--config PATH] [--out PATH] [--coverage-report PATH] [--python-dependency-audit] [--severity RULE=LEVEL (info|minor|major|critical)] [--mode default|critical|deep]\nsloppy baseline [--root PATH]\nsloppy hook [--root PATH]\nsloppy default-hook\nsloppy doctor'); return;
+    console.log('sloppy init [--root PATH] [--hook]\nsloppy check [--root PATH] [--config PATH] [--out PATH] [--coverage-report PATH] [--python-dependency-audit] [--severity RULE=LEVEL (info|minor|major|critical)] [--mode default|critical|deep]\nsloppy baseline [--root PATH]\nsloppy hook [--root PATH]\nsloppy default-hook\nsloppy doctor\nsloppy dashboard [--root PATH] [--port PORT]'); return;
   }
   validateArguments(positionals, values, command);
   const root = path.resolve(values.root ?? process.cwd());
@@ -30,6 +31,10 @@ async function main() {
     'hook-run': async () => { process.exitCode = await runDefaultHook(root); },
     hook: () => { load(root); console.log(`Installed ${installHook(root)}`); },
     doctor: () => doctor(root),
+    dashboard: async () => {
+      const { startDashboard } = await import('../dashboard/server.js');
+      await startDashboard({ scanRoot: values.root, port: values.port === undefined ? 4173 : Number(values.port) });
+    },
   };
   if (!Object.hasOwn(handlers, command)) throw new Error(`Unknown command '${command}'`);
   await handlers[command]();
@@ -92,6 +97,7 @@ function validateArguments(positionals, values, command) {
     { option: '--python-dependency-audit', enabled: values['python-dependency-audit'], commands: ['check'] },
     { option: '--severity', enabled: values.severity?.length, commands: ['check'] },
     { option: '--mode', enabled: values.mode, commands: ['check'] },
+    { option: '--port', enabled: values.port, commands: ['dashboard'] },
   ];
   for (const restriction of restrictions) {
     if (restriction.enabled && !restriction.commands.includes(command)) {
@@ -100,4 +106,5 @@ function validateArguments(positionals, values, command) {
     }
   }
   if (values.mode !== undefined) validateReportMode(values.mode);
+  if (values.port !== undefined && (!/^\d+$/.test(values.port) || Number(values.port) < 1 || Number(values.port) > 65535)) throw new Error('--port must be between 1 and 65535');
 }
